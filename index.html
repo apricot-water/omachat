@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My App Dashboard</title>
+    <title>My Tools Dashboard</title>
     <style>
         :root {
             --sidebar-width: 260px;
@@ -13,44 +13,116 @@
             --accent: #38bdf8;
             --transition-speed: 0.3s;
         }
-        body { margin: 0; display: flex; height: 100vh; font-family: sans-serif; overflow: hidden; background: #0f172a; }
-        
-        /* Sidebar */
-        #sidebar { 
-            width: var(--sidebar-width); background: var(--sidebar-bg); color: var(--text-color); 
-            display: flex; flex-direction: column; border-right: 1px solid #334155; 
-            transition: width var(--transition-speed) ease, opacity var(--transition-speed) ease;
-            white-space: nowrap; overflow: hidden; z-index: 20; position: relative;
+
+        body { 
+            margin: 0; 
+            display: flex; 
+            height: 100vh; 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+            overflow: hidden; 
+            background: #0f172a; 
         }
-        #sidebar.collapsed { width: 0; opacity: 0; border: none; }
         
-        .header { padding: 20px 20px 20px 60px; font-weight: bold; font-size: 1.2rem; border-bottom: 1px solid #334155; height: 60px; display: flex; align-items: center; box-sizing: border-box; }
+        /* --- Sidebar --- */
+        #sidebar { 
+            width: var(--sidebar-width); 
+            background: var(--sidebar-bg); 
+            color: var(--text-color); 
+            display: flex; 
+            flex-direction: column; 
+            border-right: 1px solid #334155; 
+            transition: width var(--transition-speed) ease, opacity var(--transition-speed) ease;
+            white-space: nowrap; /* Verhindert Textumbruch beim Einklappen */
+            overflow: hidden;
+            position: relative;
+            z-index: 20;
+        }
+
+        /* Klasse zum Ausblenden der Sidebar */
+        #sidebar.collapsed {
+            width: 0;
+            opacity: 0;
+            border: none;
+        }
+
+        .header { 
+            padding: 20px 20px 20px 60px; /* Platz links für den Toggle Button lassen */
+            font-size: 1.2rem; 
+            font-weight: 700; 
+            border-bottom: 1px solid #334155; 
+            background: #0f172a; 
+            height: 60px;
+            box-sizing: border-box;
+            display: flex;
+            align-items: center;
+        }
         
-        /* Navigation Items */
         #nav-items { flex-grow: 1; overflow-y: auto; padding-top: 10px; }
-        .app-link { padding: 12px 20px; cursor: pointer; display: flex; align-items: center; gap: 12px; transition: background 0.2s; color: #94a3b8; border-left: 4px solid transparent; }
+        
+        .app-link { 
+            padding: 12px 20px; 
+            cursor: pointer; 
+            display: flex; 
+            align-items: center; 
+            gap: 12px; 
+            transition: background 0.2s; 
+            color: #94a3b8; 
+            border-left: 4px solid transparent;
+        }
         .app-link:hover { background: var(--sidebar-hover); color: white; }
         .app-link.active { background: var(--sidebar-hover); border-left-color: var(--accent); color: white; }
+        .icon { font-size: 1.2em; min-width: 25px; text-align: center; }
+
+        /* --- Main Content --- */
+        #main { 
+            flex-grow: 1; 
+            display: flex; 
+            flex-direction: column; 
+            background: white; 
+            position: relative; 
+            transition: margin-left var(--transition-speed) ease;
+        }
         
-        /* Main Content */
-        #main { flex-grow: 1; display: flex; flex-direction: column; background: white; position: relative; }
         iframe { width: 100%; height: 100%; border: none; display: block; }
 
-        /* Toggle Button */
+        /* --- Floating Toggle Button --- */
         #toggle-btn {
-            position: fixed; top: 10px; left: 10px; z-index: 100;
-            background: rgba(30, 41, 59, 0.8); color: white; border: none;
-            width: 40px; height: 40px; border-radius: 8px; cursor: pointer;
-            font-size: 1.5rem; transition: 0.2s; backdrop-filter: blur(4px);
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            z-index: 100; /* Immer über allem */
+            background: rgba(30, 41, 59, 0.8); /* Halbtransparent */
+            color: white;
+            border: none;
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            transition: background 0.2s, transform 0.2s;
+            backdrop-filter: blur(4px);
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
         }
-        #toggle-btn:hover { background: var(--accent); }
 
-        /* Loader */
-        #loader { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #333; display: none; }
+        #toggle-btn:hover {
+            background: var(--accent);
+            transform: scale(1.05);
+        }
+
+        /* --- Loader --- */
+        #loader { 
+            position: absolute; top: 50%; left: 50%; 
+            transform: translate(-50%, -50%); 
+            color: #333; display: none; font-weight: bold;
+        }
     </style>
 </head>
 <body>
 
+    <!-- Der Floating Button -->
     <button id="toggle-btn" title="Menü umschalten">☰</button>
 
     <nav id="sidebar">
@@ -60,8 +132,7 @@
 
     <main id="main">
         <div id="loader">Lade App...</div>
-        <!-- WICHTIG: allow permissions für Clipboard -->
-        <iframe id="app-frame" name="app-frame" allow="clipboard-read; clipboard-write; camera; microphone"></iframe>
+        <iframe id="app-frame" name="app-frame"></iframe>
     </main>
 
     <script>
@@ -71,63 +142,63 @@
         const sidebar = document.getElementById('sidebar');
         const toggleBtn = document.getElementById('toggle-btn');
 
-        // Sidebar Toggle Logik
+        // Toggle Funktion
         toggleBtn.onclick = () => {
             sidebar.classList.toggle('collapsed');
-            toggleBtn.style.opacity = sidebar.classList.contains('collapsed') ? "0.5" : "1";
+            // Wenn eingeklappt, Button etwas transparenter machen, damit er nicht stört
+            if(sidebar.classList.contains('collapsed')) {
+                toggleBtn.style.opacity = "0.5";
+            } else {
+                toggleBtn.style.opacity = "1";
+            }
         };
-        toggleBtn.onmouseenter = () => toggleBtn.style.opacity = "1";
-        toggleBtn.onmouseleave = () => { if(sidebar.classList.contains('collapsed')) toggleBtn.style.opacity = "0.5"; };
 
-        // App laden Funktion
+        // Button Hover Effekt für Opacity
+        toggleBtn.onmouseenter = () => toggleBtn.style.opacity = "1";
+        toggleBtn.onmouseleave = () => {
+            if(sidebar.classList.contains('collapsed')) toggleBtn.style.opacity = "0.5";
+        };
+
         function loadApp(url, element) {
             document.querySelectorAll('.app-link').forEach(el => el.classList.remove('active'));
             if(element) element.classList.add('active');
             
             loader.style.display = 'block';
-            frame.style.opacity = '0';
-            frame.src = url;
-            frame.onload = () => { loader.style.display = 'none'; frame.style.opacity = '1'; frame.contentWindow.focus(); };
+            frame.style.opacity = '0'; // Soft reload effect
             
-            if(window.innerWidth < 800) { sidebar.classList.add('collapsed'); toggleBtn.style.opacity = "0.5"; }
+            frame.src = url;
+
+            frame.onload = () => {
+                loader.style.display = 'none';
+                frame.style.opacity = '1';
+                frame.contentWindow.focus();
+            };
+            
+            // Optional: Auf Mobile/kleinen Screens Sidebar automatisch schließen nach Klick
+            if(window.innerWidth < 800) {
+                sidebar.classList.add('collapsed');
+                toggleBtn.style.opacity = "0.5";
+            }
         }
 
-        // Konfiguration laden
+        // Apps laden
         fetch('apps.json')
             .then(res => res.json())
             .then(apps => {
-                const urlParams = new URLSearchParams(window.location.search);
-                const currentAppKey = urlParams.get('app');
-                let foundInitialApp = false;
-
                 apps.forEach((app, index) => {
-                    // Erzeugt einen Key für die URL (z.B. "Text Diff" -> "text-diff")
-                    const appKey = app.name.toLowerCase().replace(/[^a-z0-9]/g, '-');
-                    
                     const div = document.createElement('div');
                     div.className = 'app-link';
-                    div.innerHTML = `<span>${app.icon}</span> ${app.name}`;
-                    
-                    div.onclick = () => {
-                        // URL aktualisieren ohne Reload (?app=name)
-                        const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname + '?app=' + appKey;
-                        window.history.pushState({path: newUrl}, '', newUrl);
-                        loadApp(app.path, div);
-                    };
+                    div.innerHTML = `<span class="icon">${app.icon}</span> ${app.name}`;
+                    div.onclick = () => loadApp(app.path, div);
                     navContainer.appendChild(div);
 
-                    // Prüfen ob diese App beim Start geladen werden soll
-                    if (currentAppKey === appKey) {
-                        loadApp(app.path, div);
-                        foundInitialApp = true;
-                    } else if (index === 0 && !currentAppKey) {
-                        // Fallback: Erste App laden, wenn keine URL angegeben
-                        loadApp(app.path, div);
-                        foundInitialApp = true; // Markiert, damit wir nicht überschrieben werden
-                    }
+                    // Erste App beim Start laden
+                    if(index === 0) loadApp(app.path, div);
                 });
             })
-            .catch(err => console.error("Fehler beim Laden der apps.json", err));
+            .catch(err => {
+                navContainer.innerHTML = '<div style="padding:20px; color:red">Fehler: apps.json nicht gefunden</div>';
+            });
     </script>
 </body>
 </html>
