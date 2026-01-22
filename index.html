@@ -5,30 +5,22 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>My Tools Dashboard</title>
     <style>
+        /* CSS-Fix: Verhindert Rechenfehler bei der Größe */
         * { box-sizing: border-box; }
 
         :root {
             --sidebar-width: 260px;
-            --sidebar-bg: #1e293b; /* Standard Grau-Blau */
+            --sidebar-bg: #1e293b;
             --sidebar-hover: #334155;
             --text-color: #f8fafc;
             --accent: #38bdf8;
             --transition-speed: 0.3s;
-            --main-bg: #f8fafc; /* Heller Hintergrund für Main */
-        }
-
-        /* OLED MODE OVERRIDES (werden per JS Klasse gesetzt) */
-        body.oled-active {
-            --sidebar-bg: #000000 !important;
-            --sidebar-hover: #1a1a1a !important;
-            --main-bg: #000000 !important;
-            background-color: #000000 !important;
         }
 
         body { 
             margin: 0; 
             display: flex; 
-            height: 100vh; 
+            height: 100vh; /* Falls Mobile-Problem: 100dvh wäre besser, aber 100vh ist Standard */
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
             overflow: hidden; 
             background: #0f172a; 
@@ -41,33 +33,30 @@
             color: var(--text-color); 
             display: flex; 
             flex-direction: column; 
-            border-right: 1px solid #333; 
-            transition: all var(--transition-speed) ease;
+            border-right: 1px solid #334155; 
+            transition: width var(--transition-speed) ease, opacity var(--transition-speed) ease;
             white-space: nowrap; 
             overflow: hidden;
             position: relative;
             z-index: 20;
         }
 
-        #sidebar.collapsed { width: 0; opacity: 0; border: none; }
+        #sidebar.collapsed {
+            width: 0;
+            opacity: 0;
+            border: none;
+        }
 
         .header { 
             padding: 20px 20px 20px 60px; 
             font-size: 1.2rem; 
             font-weight: 700; 
-            border-bottom: 1px solid #333; 
-            background: inherit; /* Nimmt Farbe von Sidebar an */
+            border-bottom: 1px solid #334155; 
+            background: #0f172a; 
             height: 60px;
             display: flex;
             align-items: center;
-            justify-content: space-between; /* Platz für den Theme Button */
         }
-
-        /* Theme Toggle Button */
-        #theme-toggle {
-            background: none; border: none; cursor: pointer; font-size: 1.2rem; padding: 5px; opacity: 0.7; transition: 0.2s;
-        }
-        #theme-toggle:hover { opacity: 1; transform: scale(1.1); }
         
         #nav-items { flex-grow: 1; overflow-y: auto; padding-top: 10px; }
         
@@ -90,28 +79,46 @@
             flex-grow: 1; 
             display: flex; 
             flex-direction: column; 
-            background: var(--main-bg); 
+            background: white; 
             position: relative; 
             transition: margin-left var(--transition-speed) ease;
         }
         
+        /* Wichtig: display: block verhindert den "Inline-Gap" unten */
         iframe { width: 100%; height: 100%; border: none; display: block; }
 
         /* --- Floating Toggle Button --- */
         #toggle-btn {
-            position: fixed; top: 10px; left: 10px; z-index: 100; 
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            z-index: 100; 
             background: rgba(30, 41, 59, 0.8); 
-            color: white; border: none; width: 40px; height: 40px; border-radius: 8px; 
-            cursor: pointer; display: flex; align-items: center; justify-content: center; 
-            font-size: 1.5rem; transition: 0.2s; backdrop-filter: blur(4px);
+            color: white;
+            border: none;
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            transition: background 0.2s, transform 0.2s;
+            backdrop-filter: blur(4px);
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
         }
-        #toggle-btn:hover { background: var(--accent); }
+
+        #toggle-btn:hover {
+            background: var(--accent);
+            transform: scale(1.05);
+        }
 
         /* --- Loader --- */
         #loader { 
             position: absolute; top: 50%; left: 50%; 
             transform: translate(-50%, -50%); 
-            color: #888; display: none; font-weight: bold;
+            color: #333; display: none; font-weight: bold;
         }
     </style>
 </head>
@@ -120,16 +127,13 @@
     <button id="toggle-btn" title="Menü umschalten">☰</button>
 
     <nav id="sidebar">
-        <div class="header">
-            <span>Tools</span>
-            <!-- Neuer Button für Dark Mode -->
-            <button id="theme-toggle" title="OLED Mode umschalten">🌗</button>
-        </div>
+        <div class="header">Tools Dashboard</div>
         <div id="nav-items"></div>
     </nav>
 
     <main id="main">
         <div id="loader">Lade App...</div>
+        <!-- IFrame mit Permissions (Wichtig für Clipboard!) -->
         <iframe id="app-frame" name="app-frame" allow="clipboard-read; clipboard-write; camera; microphone; fullscreen"></iframe>
     </main>
 
@@ -139,74 +143,21 @@
         const loader = document.getElementById('loader');
         const sidebar = document.getElementById('sidebar');
         const toggleBtn = document.getElementById('toggle-btn');
-        const themeBtn = document.getElementById('theme-toggle');
 
-        // --- OLED MODE LOGIC ---
-        let isOledMode = localStorage.getItem('oledMode') === 'true';
-
-        // Das CSS, das wir in JEDEN IFrame spritzen, wenn OLED an ist
-        // Wir nutzen !important, um die App-Styles zu überschreiben
-        const oledCss = `
-            html, body { background-color: #000000 !important; color: #e2e8f0 !important; }
-            input, textarea, select, .card, .box, div[style*="background"] { 
-                background-color: #111111 !important; 
-                color: #ffffff !important; 
-                border-color: #333 !important; 
-            }
-            /* Scrollbars dunkel machen */
-            ::-webkit-scrollbar { width: 10px; background: #000; }
-            ::-webkit-scrollbar-thumb { background: #333; border-radius: 5px; }
-            button { background-color: #222 !important; color: white !important; border: 1px solid #444 !important; }
-            a { color: #38bdf8 !important; }
-        `;
-
-        function applyTheme() {
-            // 1. Dashboard selbst anpassen
-            if (isOledMode) {
-                document.body.classList.add('oled-active');
-            } else {
-                document.body.classList.remove('oled-active');
-            }
-
-            // 2. Iframe Inhalt anpassen (falls geladen)
-            try {
-                if (frame.contentDocument) {
-                    const doc = frame.contentDocument;
-                    let styleTag = doc.getElementById('oled-style-injection');
-                    
-                    if (isOledMode) {
-                        if (!styleTag) {
-                            styleTag = doc.createElement('style');
-                            styleTag.id = 'oled-style-injection';
-                            doc.head.appendChild(styleTag);
-                        }
-                        styleTag.innerHTML = oledCss;
-                    } else {
-                        if (styleTag) styleTag.remove();
-                    }
-                }
-            } catch(e) {
-                // Passiert nur, wenn du lokal file:// ohne Server nutzt. Auf Github Pages geht das.
-                console.log("Kann iFrame CSS nicht zugreifen (Cross-Origin Protection lokal?)");
-            }
-        }
-
-        themeBtn.onclick = () => {
-            isOledMode = !isOledMode;
-            localStorage.setItem('oledMode', isOledMode);
-            applyTheme();
-        };
-
-        // Initiale Anwendung
-        applyTheme();
-        // --- ENDE OLED LOGIC ---
-
+        // Toggle Funktion (Dein Original Code)
         toggleBtn.onclick = () => {
             sidebar.classList.toggle('collapsed');
-            toggleBtn.style.opacity = sidebar.classList.contains('collapsed') ? "0.5" : "1";
+            if(sidebar.classList.contains('collapsed')) {
+                toggleBtn.style.opacity = "0.5";
+            } else {
+                toggleBtn.style.opacity = "1";
+            }
         };
+
         toggleBtn.onmouseenter = () => toggleBtn.style.opacity = "1";
-        toggleBtn.onmouseleave = () => { if(sidebar.classList.contains('collapsed')) toggleBtn.style.opacity = "0.5"; };
+        toggleBtn.onmouseleave = () => {
+            if(sidebar.classList.contains('collapsed')) toggleBtn.style.opacity = "0.5";
+        };
 
         function loadApp(url, element) {
             document.querySelectorAll('.app-link').forEach(el => el.classList.remove('active'));
@@ -214,21 +165,22 @@
             
             loader.style.display = 'block';
             frame.style.opacity = '0';
+            
             frame.src = url;
 
             frame.onload = () => {
                 loader.style.display = 'none';
                 frame.style.opacity = '1';
-                
-                // Sobald der Frame fertig geladen hat -> Theme sofort anwenden!
-                applyTheme(); 
-                
                 frame.contentWindow.focus();
             };
             
-            if(window.innerWidth < 800) { sidebar.classList.add('collapsed'); toggleBtn.style.opacity = "0.5"; }
+            if(window.innerWidth < 800) {
+                sidebar.classList.add('collapsed');
+                toggleBtn.style.opacity = "0.5";
+            }
         }
 
+        // --- HIER IST DIE NEUE URL LOGIK ---
         fetch('apps.json')
             .then(res => res.json())
             .then(apps => {
@@ -236,23 +188,32 @@
                 const currentAppKey = urlParams.get('app');
                 
                 apps.forEach((app, index) => {
+                    // Erzeugt Slug (z.B. "Text Diff" -> "text-diff")
                     const appKey = app.name.toLowerCase().replace(/[^a-z0-9]/g, '-');
+                    
                     const div = document.createElement('div');
                     div.className = 'app-link';
                     div.innerHTML = `<span class="icon">${app.icon}</span> ${app.name}`;
                     
                     div.onclick = () => {
+                        // URL updaten ohne Reload
                         const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname + '?app=' + appKey;
                         window.history.pushState({path: newUrl}, '', newUrl);
                         loadApp(app.path, div);
                     };
                     navContainer.appendChild(div);
 
-                    if (currentAppKey === appKey) { loadApp(app.path, div); } 
-                    else if (index === 0 && !currentAppKey) { loadApp(app.path, div); }
+                    // Logik: Ist das die App aus der URL? ODER ist es die erste App und keine URL da?
+                    if (currentAppKey === appKey) {
+                        loadApp(app.path, div);
+                    } else if (index === 0 && !currentAppKey) {
+                        loadApp(app.path, div);
+                    }
                 });
             })
-            .catch(err => navContainer.innerHTML = '<div style="padding:20px; color:red">Fehler: apps.json</div>');
+            .catch(err => {
+                navContainer.innerHTML = '<div style="padding:20px; color:red">Fehler: apps.json nicht gefunden</div>';
+            });
     </script>
 </body>
 </html>
