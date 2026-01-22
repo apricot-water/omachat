@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>My Tools Dashboard</title>
     <style>
+        /* CSS-Fix: Verhindert Rechenfehler bei der Größe */
+        * { box-sizing: border-box; }
+
         :root {
             --sidebar-width: 260px;
             --sidebar-bg: #1e293b;
@@ -17,7 +20,7 @@
         body { 
             margin: 0; 
             display: flex; 
-            height: 100vh; 
+            height: 100vh; /* Falls Mobile-Problem: 100dvh wäre besser, aber 100vh ist Standard */
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
             overflow: hidden; 
             background: #0f172a; 
@@ -32,13 +35,12 @@
             flex-direction: column; 
             border-right: 1px solid #334155; 
             transition: width var(--transition-speed) ease, opacity var(--transition-speed) ease;
-            white-space: nowrap; /* Verhindert Textumbruch beim Einklappen */
+            white-space: nowrap; 
             overflow: hidden;
             position: relative;
             z-index: 20;
         }
 
-        /* Klasse zum Ausblenden der Sidebar */
         #sidebar.collapsed {
             width: 0;
             opacity: 0;
@@ -46,13 +48,12 @@
         }
 
         .header { 
-            padding: 20px 20px 20px 60px; /* Platz links für den Toggle Button lassen */
+            padding: 20px 20px 20px 60px; 
             font-size: 1.2rem; 
             font-weight: 700; 
             border-bottom: 1px solid #334155; 
             background: #0f172a; 
             height: 60px;
-            box-sizing: border-box;
             display: flex;
             align-items: center;
         }
@@ -83,6 +84,7 @@
             transition: margin-left var(--transition-speed) ease;
         }
         
+        /* Wichtig: display: block verhindert den "Inline-Gap" unten */
         iframe { width: 100%; height: 100%; border: none; display: block; }
 
         /* --- Floating Toggle Button --- */
@@ -90,8 +92,8 @@
             position: fixed;
             top: 10px;
             left: 10px;
-            z-index: 100; /* Immer über allem */
-            background: rgba(30, 41, 59, 0.8); /* Halbtransparent */
+            z-index: 100; 
+            background: rgba(30, 41, 59, 0.8); 
             color: white;
             border: none;
             width: 40px;
@@ -122,7 +124,6 @@
 </head>
 <body>
 
-    <!-- Der Floating Button -->
     <button id="toggle-btn" title="Menü umschalten">☰</button>
 
     <nav id="sidebar">
@@ -132,7 +133,8 @@
 
     <main id="main">
         <div id="loader">Lade App...</div>
-        <iframe id="app-frame" name="app-frame"></iframe>
+        <!-- IFrame mit Permissions (Wichtig für Clipboard!) -->
+        <iframe id="app-frame" name="app-frame" allow="clipboard-read; clipboard-write; camera; microphone; fullscreen"></iframe>
     </main>
 
     <script>
@@ -142,10 +144,9 @@
         const sidebar = document.getElementById('sidebar');
         const toggleBtn = document.getElementById('toggle-btn');
 
-        // Toggle Funktion
+        // Toggle Funktion (Dein Original Code)
         toggleBtn.onclick = () => {
             sidebar.classList.toggle('collapsed');
-            // Wenn eingeklappt, Button etwas transparenter machen, damit er nicht stört
             if(sidebar.classList.contains('collapsed')) {
                 toggleBtn.style.opacity = "0.5";
             } else {
@@ -153,7 +154,6 @@
             }
         };
 
-        // Button Hover Effekt für Opacity
         toggleBtn.onmouseenter = () => toggleBtn.style.opacity = "1";
         toggleBtn.onmouseleave = () => {
             if(sidebar.classList.contains('collapsed')) toggleBtn.style.opacity = "0.5";
@@ -164,7 +164,7 @@
             if(element) element.classList.add('active');
             
             loader.style.display = 'block';
-            frame.style.opacity = '0'; // Soft reload effect
+            frame.style.opacity = '0';
             
             frame.src = url;
 
@@ -174,26 +174,41 @@
                 frame.contentWindow.focus();
             };
             
-            // Optional: Auf Mobile/kleinen Screens Sidebar automatisch schließen nach Klick
             if(window.innerWidth < 800) {
                 sidebar.classList.add('collapsed');
                 toggleBtn.style.opacity = "0.5";
             }
         }
 
-        // Apps laden
+        // --- HIER IST DIE NEUE URL LOGIK ---
         fetch('apps.json')
             .then(res => res.json())
             .then(apps => {
+                const urlParams = new URLSearchParams(window.location.search);
+                const currentAppKey = urlParams.get('app');
+                
                 apps.forEach((app, index) => {
+                    // Erzeugt Slug (z.B. "Text Diff" -> "text-diff")
+                    const appKey = app.name.toLowerCase().replace(/[^a-z0-9]/g, '-');
+                    
                     const div = document.createElement('div');
                     div.className = 'app-link';
                     div.innerHTML = `<span class="icon">${app.icon}</span> ${app.name}`;
-                    div.onclick = () => loadApp(app.path, div);
+                    
+                    div.onclick = () => {
+                        // URL updaten ohne Reload
+                        const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname + '?app=' + appKey;
+                        window.history.pushState({path: newUrl}, '', newUrl);
+                        loadApp(app.path, div);
+                    };
                     navContainer.appendChild(div);
 
-                    // Erste App beim Start laden
-                    if(index === 0) loadApp(app.path, div);
+                    // Logik: Ist das die App aus der URL? ODER ist es die erste App und keine URL da?
+                    if (currentAppKey === appKey) {
+                        loadApp(app.path, div);
+                    } else if (index === 0 && !currentAppKey) {
+                        loadApp(app.path, div);
+                    }
                 });
             })
             .catch(err => {
