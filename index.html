@@ -32,7 +32,7 @@
             flex-direction: column; 
             border-right: 1px solid #334155; 
             transition: width var(--transition-speed) ease, opacity var(--transition-speed) ease;
-            white-space: nowrap;
+            white-space: nowrap; /* Verhindert Textumbruch beim Einklappen */
             overflow: hidden;
             position: relative;
             z-index: 20;
@@ -46,7 +46,7 @@
         }
 
         .header { 
-            padding: 20px 20px 20px 60px;
+            padding: 20px 20px 20px 60px; /* Platz links für den Toggle Button lassen */
             font-size: 1.2rem; 
             font-weight: 700; 
             border-bottom: 1px solid #334155; 
@@ -90,8 +90,8 @@
             position: fixed;
             top: 10px;
             left: 10px;
-            z-index: 100;
-            background: rgba(30, 41, 59, 0.8);
+            z-index: 100; /* Immer über allem */
+            background: rgba(30, 41, 59, 0.8); /* Halbtransparent */
             color: white;
             border: none;
             width: 40px;
@@ -132,8 +132,7 @@
 
     <main id="main">
         <div id="loader">Lade App...</div>
-        <!-- NEU: allow permissions hinzugefügt -->
-        <iframe id="app-frame" name="app-frame" allow="clipboard-read; clipboard-write; camera; microphone"></iframe>
+        <iframe id="app-frame" name="app-frame"></iframe>
     </main>
 
     <script>
@@ -146,6 +145,7 @@
         // Toggle Funktion
         toggleBtn.onclick = () => {
             sidebar.classList.toggle('collapsed');
+            // Wenn eingeklappt, Button etwas transparenter machen, damit er nicht stört
             if(sidebar.classList.contains('collapsed')) {
                 toggleBtn.style.opacity = "0.5";
             } else {
@@ -153,6 +153,7 @@
             }
         };
 
+        // Button Hover Effekt für Opacity
         toggleBtn.onmouseenter = () => toggleBtn.style.opacity = "1";
         toggleBtn.onmouseleave = () => {
             if(sidebar.classList.contains('collapsed')) toggleBtn.style.opacity = "0.5";
@@ -163,7 +164,7 @@
             if(element) element.classList.add('active');
             
             loader.style.display = 'block';
-            frame.style.opacity = '0';
+            frame.style.opacity = '0'; // Soft reload effect
             
             frame.src = url;
 
@@ -173,54 +174,31 @@
                 frame.contentWindow.focus();
             };
             
+            // Optional: Auf Mobile/kleinen Screens Sidebar automatisch schließen nach Klick
             if(window.innerWidth < 800) {
                 sidebar.classList.add('collapsed');
                 toggleBtn.style.opacity = "0.5";
             }
         }
 
-        // --- NEUER TEIL START: Deep Linking Logic ---
+        // Apps laden
         fetch('apps.json')
             .then(res => res.json())
             .then(apps => {
-                // 1. URL Parameter prüfen (?app=name)
-                const urlParams = new URLSearchParams(window.location.search);
-                const currentAppKey = urlParams.get('app');
-                let foundInitialApp = false;
-
                 apps.forEach((app, index) => {
-                    // Slug erstellen (z.B. "Text Diff" -> "text-diff")
-                    const appKey = app.name.toLowerCase().replace(/[^a-z0-9]/g, '-');
-                    
                     const div = document.createElement('div');
                     div.className = 'app-link';
                     div.innerHTML = `<span class="icon">${app.icon}</span> ${app.name}`;
-                    
-                    div.onclick = () => {
-                        // URL aktualisieren ohne Reload
-                        const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname + '?app=' + appKey;
-                        window.history.pushState({path: newUrl}, '', newUrl);
-                        loadApp(app.path, div);
-                    };
+                    div.onclick = () => loadApp(app.path, div);
                     navContainer.appendChild(div);
 
-                    // Prüfen ob dies die angeforderte App ist
-                    if (currentAppKey === appKey) {
-                        loadApp(app.path, div);
-                        foundInitialApp = true;
-                    } 
-                    // Fallback: Wenn keine URL-Angabe, die erste App laden (aber nur wenn wir noch nichts geladen haben)
-                    else if (index === 0 && !currentAppKey) {
-                        loadApp(app.path, div);
-                        foundInitialApp = true;
-                    }
+                    // Erste App beim Start laden
+                    if(index === 0) loadApp(app.path, div);
                 });
             })
             .catch(err => {
                 navContainer.innerHTML = '<div style="padding:20px; color:red">Fehler: apps.json nicht gefunden</div>';
-                console.error(err);
             });
-         // --- NEUER TEIL ENDE ---
     </script>
 </body>
 </html>
