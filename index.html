@@ -159,14 +159,18 @@
             if(sidebar.classList.contains('collapsed')) toggleBtn.style.opacity = "0.5";
         };
 
-        function loadApp(url, element) {
+       function loadApp(url, element) {
             document.querySelectorAll('.app-link').forEach(el => el.classList.remove('active'));
             if(element) element.classList.add('active');
             
             loader.style.display = 'block';
             frame.style.opacity = '0';
             
-            frame.src = url;
+            // === ÄNDERUNG: Hash weiterreichen ===
+            // Wir nehmen alles ab # aus der Dashboard-URL und hängen es an die App-URL
+            // Wenn kein Hash da ist, ist window.location.hash einfach ein leerer String ""
+            frame.src = url + window.location.hash;
+            // ====================================
 
             frame.onload = () => {
                 loader.style.display = 'none';
