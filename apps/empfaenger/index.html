@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<link rel="manifest" href="manifest.json">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Oma Display V10</title>
+<style>
+    /* === OMA UI DESIGN === */
+    :root { --bg: #000000; --text: #ffffff; --accent: #4cd137; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 0; background-color: var(--bg); color: var(--text); font-family: sans-serif; overflow: hidden; height: 100vh; width: 100vw; display: flex; flex-direction: column; }
+    
+    /* HEADER */
+    #metaInfo { height: 60px; width: 100%; background: #111; border-bottom: 1px solid #333; display: flex; align-items: center; justify-content: center; font-size: 2.5vh; color: #888; flex-shrink: 0; z-index: 5; }
+    
+    /* MAIN DISPLAY */
+    #displayArea { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; text-align: center; overflow: hidden; position: relative; }
+    #messageText { font-size: 3vh; line-height: 1.2; font-weight: bold; word-wrap: break-word; max-height: 100%; overflow-y: auto; width: 100%; }
+    #messageImg { max-width: 100%; max-height: 40vh; object-fit: contain; border-radius: 20px; margin-bottom: 20px; display: none; }
+    
+    /* NAVIGATION ZONES */
+    .nav-zone { position: fixed; top: 60px; bottom: 0; width: 20%; z-index: 10; opacity: 0; display: flex; align-items: center; justify-content: center; font-size: 50px; color: white; background: rgba(255,255,255,0.1); cursor: pointer; }
+    .nav-zone:active { opacity: 1; }
+    #btnPrev { left: 0; } #btnNext { right: 0; }
+
+    /* SETUP SCREEN */
+    #setupScreen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #222; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 15px; overflow-y: auto; padding: 20px; }
+    input { padding: 12px; font-size: 18px; border-radius: 8px; border: none; width: 90%; max-width: 400px; text-align: center; }
+    .group-label { color: #888; font-size: 14px; margin-top: 10px; width: 90%; max-width: 400px; text-align: left; }
+    button { padding: 15px 30px; font-size: 20px; background: var(--accent); border: none; border-radius: 10px; font-weight: bold; cursor: pointer; margin-top: 20px;}
+
+    /* TOOLS */
+    #statusLight { position: fixed; top: 10px; right: 10px; width: 15px; height: 15px; border-radius: 50%; background: orange; z-index: 50; border: 2px solid white; cursor: pointer; }
+    #reloadBtn { position: fixed; bottom: 15px; right: 15px; width: 40px; height: 40px; background: rgba(50,50,50,0.8); border: 1px solid #666; border-radius: 50%; color: #ccc; font-size: 20px; display: flex; align-items: center; justify-content: center; z-index: 40; cursor: pointer; }
+    #debugLog { position: fixed; bottom: 0; left: 0; width: 100%; height: 100px; background: rgba(0,0,0,0.8); color: lime; font-family: monospace; font-size: 10px; overflow-y: scroll; pointer-events: none; z-index: 40; padding: 5px; box-sizing: border-box; display: none; }
+
+    /* UI TWEAKS MODAL STYLE */
+    #uiTweaksModal {
+        position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+        width: 80%; max-width: 350px; background: #222; border: 1px solid #444;
+        border-radius: 15px; padding: 20px; z-index: 200;
+        display: flex; flex-direction: column; gap: 10px;
+        box-shadow: 0 0 50px rgba(0,0,0,0.8);
+    }
+    #uiTweaksModal h3 { margin: 0 0 10px 0; color: white; text-align: center; }
+    #uiTweaksModal label { color: #ccc; font-size: 14px; display: flex; justify-content: space-between; }
+    #uiTweaksModal input[type=range] { width: 100%; height: 30px; }
+    /* MAIN DISPLAY - PROFESSIONAL OLED LOOK */
+    #displayArea { 
+        flex: 1; 
+        display: flex; 
+        flex-direction: column; 
+        align-items: center;     /* Zentriert den Inhalt (Bild & Textblock) horizontal */
+        justify-content: center; /* Zentriert alles vertikal */
+        padding: 20px; 
+        overflow: hidden; 
+        position: relative; 
+    }
+
+    #messageImg { 
+        max-width: 100%;       /* Bild darf volle Breite nutzen */
+        max-height: 45vh;      /* Etwas Platz lassen für den Text */
+        object-fit: contain; 
+        border-radius: 15px; 
+        margin-bottom: 25px;   /* Mehr Abstand zum Text sieht edler aus */
+        display: none; 
+        box-shadow: 0 0 20px rgba(0,0,0,0.5); /* Leichter Schatten falls Bild hell ist */
+    }
+
+    #messageText { 
+        /* 1. Linksbündig für Lesbarkeit */
+        text-align: left; 
+        
+        /* 2. Normale Dicke statt Fett */
+        font-weight: 400; 
+        
+        /* 3. Zeilenabstand für "Luft" */
+        line-height: 1.5; 
+        
+        /* 4. Breite begrenzen (90%) */
+        width: 90%; 
+        max-width: 800px; /* Profi-Tipp: Auf riesigen Tablets wird die Zeile sonst zu lang */
+        
+        /* Schriftart modernisieren (System Fonts) */
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        
+        /* OLED-Tipp: Leichtes Off-White (#f0f0f0) ist angenehmer als grelles Weiß (#ffffff) */
+        color: #f0f0f0; 
+
+        /* Layout & Scrollen */
+        font-size: 4vh; /* Standard, wird vom JS-Slider überschrieben */
+        word-wrap: break-word; 
+        max-height: 100%; 
+        overflow-y: auto; 
+    }
+    /* MAIN DISPLAY - TOP ALIGNED */
+    #displayArea { 
+        flex: 1; 
+        display: flex; 
+        flex-direction: column; 
+        align-items: center; 
+        
+        /* HIER DIE ÄNDERUNG: */
+        justify-content: flex-start; /* Inhalt beginnt oben (statt Mitte) */
+        padding: 10px 20px;          /* Oben nur 10px Abstand zum Header */
+        
+        overflow: hidden; 
+        position: relative; 
+    }
+    /* HEADER - OMA FRIENDLY */
+    #metaInfo { 
+        height: 70px;            /* Etwas höher für größere Schrift */
+        width: 100%; 
+        background: #111; 
+        border-bottom: 2px solid #333; /* Deutlichere Trennlinie */
+        
+        display: flex;           /* Flexbox aktiviert */
+        align-items: center;     /* Vertikal mittig */
+        justify-content: space-between; /* Schiebt Name nach Links, Rest nach Rechts */
+        
+        padding: 0 50px;         /* Abstand zum Rand */
+        flex-shrink: 0; 
+        z-index: 5; 
+    }
+
+    /* Der Name (Links) */
+    .meta-sender {
+        font-size: 3.5vh;    /* Schön groß */
+        font-weight: 900;    /* Extra Fett */
+        color: var(--accent); /* Die Akzentfarbe (Grün) oder ändere zu #ffffff für Weiß */
+        text-transform: capitalize; /* Erster Buchstabe immer Groß */
+    }
+
+  /* Datum & Zähler (Rechts) */
+    .meta-details {
+        text-align: right;   /* Rechtsbündig */
+        display: flex; 
+        flex-direction: column; /* Untereinander */
+        justify-content: center;
+        color: #ffffff;
+        
+        /* HIER DIE ÄNDERUNGEN: */
+        font-size: 1.8vh;    /* Basis-Schrift etwas kleiner, damit 3 Zeilen passen */
+        line-height: 1.2;    /* Zeilen enger zusammenrücken */
+        font-weight: normal;
+    }
+</style>
+</head>
+<body>
+
+    <div id="statusLight" onclick="handleSecretClick()"></div>
+    <div id="debugLog"></div>
+    <div id="reloadBtn" onclick="location.reload()">↻</div>
+
+    <!-- SETUP FORMULAR -->
+    <div id="setupScreen">
+        <h1 style="color:white; margin:0">Einrichtung</h1>
+        <div style="color:#aaa; font-size:12px; margin-bottom:10px">Oder Magic-Link benutzen</div>
+        
+        <div class="group-label">GitHub Archiv</div>
+        <input id="ghUser" placeholder="User">
+        <input id="ghRepo" placeholder="Repo">
+        <input id="ghToken" type="password" placeholder="Token">
+
+        <div class="group-label">NTFY (Live)</div>
+        <input id="setupTopic" placeholder="Topic">
+        <input id="setupPass" type="password" placeholder="Passwort">
+        
+        <button onclick="saveSetup()">Starten</button>
+        <button onclick="resetApp()" style="background:#555; font-size:14px; margin-top:0">Reset</button>
+    </div>
+
+    <!-- UI BEREICHE -->
+    <div id="metaInfo"></div>
+    <div id="displayArea">
+        <img id="messageImg" src="">
+        <div id="messageText">Lade Archiv...</div>
+    </div>
+    <div id="btnPrev" class="nav-zone" onclick="prevMsg()">❮</div>
+    <div id="btnNext" class="nav-zone" onclick="nextMsg()">❯</div>
+
+    <!-- UI TWEAKS MODAL (Versteckt) -->
+    <div id="uiTweaksModal" style="display:none;">
+        <h3>Anzeige anpassen</h3>
+        
+        <label>Schriftgröße: <span id="valText">4</span>vh</label>
+        <input type="range" id="rangeText" min="2" max="10" step="0.5" oninput="previewUi()">
+        
+        <label>Bildhöhe: <span id="valImg">50</span>vh</label>
+        <input type="range" id="rangeImg" min="10" max="90" step="5" oninput="previewUi()">
+        
+        <div style="display:flex; gap:10px; margin-top:20px; width:100%;">
+            <button onclick="closeUi(false)" style="background:#555; flex:1;">Abbruch</button>
+            <button onclick="closeUi(true)" style="background:var(--accent); flex:1;">Speichern</button>
+        </div>
+    </div>
+<script>
+    // === 0. MAGIC LINK CHECK (Muss ganz oben sein) ===
+    (function checkMagicLink() {
+        const hash = window.location.hash;
+        if (hash.startsWith('#config=')) {
+            try {
+                // Decodieren
+                const b64 = hash.substring(8);
+                const json = JSON.parse(atob(b64));
+                
+                // Mapping der Short-Keys (Sender) auf Config-Keys (Empfänger)
+                const newConf = {
+                    ghUser: json.gu,
+                    ghRepo: json.gr,
+                    ghToken: json.gt,
+                    ntfyTopic: json.t,
+                    pass: json.p
+                };
+
+                // Validierung
+                if(newConf.ghUser && newConf.ntfyTopic && newConf.pass) {
+                    localStorage.setItem('oma_conf_v10', JSON.stringify(newConf));
+                    history.replaceState(null, null, window.location.pathname);
+                    location.reload();
+                } else {
+                    alert("Link unvollständig.");
+                }
+            } catch (e) {
+                console.error("Link Error", e);
+                alert("Konfigurations-Link fehlerhaft.");
+            }
+        }
+    })();
+
+    // === 1. BASIC UTILS ===
+    function log(msg) { console.log(msg); const d=document.getElementById('debugLog'); if(d) d.innerHTML=`> ${msg}<br>`+d.innerHTML; }
+    function toggleDebug() { const d=document.getElementById('debugLog'); d.style.display=d.style.display==='none'?'block':'none'; }
+
+
+let config = JSON.parse(localStorage.getItem('oma_conf_v10')) || null;
+    let messages = []; 
+    // NEU: Eine Merkliste für gelöschte Timestamps
+    let hiddenRegistry = new Set(); 
+    let currentIndex = 0;
+    
+    // Web Crypto Setup
+    const enc = new TextEncoder();
+    const dec = new TextDecoder();
+    async function getKey(password, salt) {
+        const k = await window.crypto.subtle.importKey("raw", enc.encode(password), {name:"PBKDF2"}, false, ["deriveKey"]);
+        return window.crypto.subtle.deriveKey({name:"PBKDF2", salt:salt, iterations:100000, hash:"SHA-256"}, k, {name:"AES-GCM", length:256}, true, ["encrypt","decrypt"]);
+    }
+
+// ... getKey bleibt ...
+
+    // NEU: Binärdaten entschlüsseln
+    async function decryptData(buffer, password) {
+        try {
+            const bytes = new Uint8Array(buffer);
+            // Salt (16) + IV (12) extrahieren
+            const s = bytes.slice(0, 16);
+            const iv = bytes.slice(16, 28);
+            const data = bytes.slice(28); // Der Rest ist die verschlüsselte Datei
+            
+            const k = await getKey(password, s);
+            return await window.crypto.subtle.decrypt({name: "AES-GCM", iv: iv}, k, data);
+        } catch(e) { 
+            console.error("Entschlüsselung fehlgeschlagen:", e);
+            return null; 
+        }
+    }
+
+    // Hilfsfunktion: Base64 String zu ArrayBuffer
+    function base64ToBuffer(b64) {
+        const bin = atob(b64);
+        const len = bin.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) bytes[i] = bin.charCodeAt(i);
+        return bytes.buffer;
+    }
+
+    // === PROCESS AND ADD (UPDATED) ===
+ async function processAndAdd(item) {
+        // 1. ZOMBIE & BLACKLIST CHECK
+        // Wenn im Item hidden gesetzt ist ODER wir es schon auf der schwarzen Liste haben:
+        if (item.hidden || hiddenRegistry.has(item.ts)) {
+            hiddenRegistry.add(item.ts); // Fürs nächste Mal merken
+            return; // Und tschüss
+        }
+        
+        // 2. Validierung
+        if (!item.enc) return;
+        if (messages.some(m => m.timestamp === item.ts)) return;
+
+        let plain = { sender: '?', text: 'Fehler', image: null };
+        
+        // ... (AB HIER BLEIBT ALLES WIE VORHER: Decrypt Text, Decrypt Bild, Push) ...
+        // Hier zur Sicherheit der Rest, damit du nichts falsch kopierst:
+        
+        const jsonStr = await decryptStr(item.enc, config.pass);
+        if(jsonStr) {
+            try {
+                const content = JSON.parse(jsonStr);
+                plain.sender = content.sender;
+                plain.text = content.text;
+            } catch(e) { plain.text = "Format Fehler"; }
+        } else { return; }
+
+        if (item.img) {
+            let encryptedBuffer = null;
+            if (item.img.startsWith('http')) {
+                try {
+                    const resp = await fetch(item.img);
+                    encryptedBuffer = await resp.arrayBuffer();
+                } catch(e) { console.error("Live Load Error", e); }
+            } else {
+                encryptedBuffer = base64ToBuffer(item.img);
+            }
+
+            if (encryptedBuffer) {
+                const decryptedImageBuffer = await decryptData(encryptedBuffer, config.pass);
+                if (decryptedImageBuffer) {
+                    const blob = new Blob([decryptedImageBuffer], {type: 'image/jpeg'});
+                    plain.image = URL.createObjectURL(blob);
+                }
+            }
+        }
+
+        messages.push({
+            timestamp: item.ts,
+            sender: plain.sender,
+            text: plain.text,
+            image: plain.image
+        });
+        
+        messages.sort((a,b) => a.timestamp - b.timestamp);
+        
+        const wasAtEnd = (currentIndex >= messages.length - 2);
+        if (wasAtEnd || messages.length === 1) currentIndex = messages.length - 1;
+        updateDisplay();
+    }
+    
+    async function decryptStr(base64Data, password) {
+        try {
+            if(!base64Data) return null;
+            const bin = atob(base64Data);
+            const bytes = new Uint8Array(bin.length);
+            for(let i=0; i<bin.length; i++) bytes[i] = bin.charCodeAt(i);
+            const salt=bytes.slice(0,16), iv=bytes.slice(16,28), data=bytes.slice(28);
+            const key = await getKey(password, salt);
+            const decrypted = await window.crypto.subtle.decrypt({name:"AES-GCM", iv:iv}, key, data);
+            return dec.decode(decrypted);
+        } catch(e) { console.error(e); return null; }
+    }
+
+    // Falls Config da ist -> Direkt start
+    if(config) {
+        document.getElementById('setupScreen').style.display = 'none';
+        startApp();
+    } else {
+        // Setup Formular Felder füllen falls vorhanden
+        if(config) {
+            document.getElementById('ghUser').value = config.ghUser || "";
+            document.getElementById('setupTopic').value = config.ntfyTopic || "";
+        }
+    }
+
+    function saveSetup() {
+        const c = {
+            ghUser: document.getElementById('ghUser').value.trim(),
+            ghRepo: document.getElementById('ghRepo').value.trim(),
+            ghToken: document.getElementById('ghToken').value.trim(),
+            ntfyTopic: document.getElementById('setupTopic').value.trim(),
+            pass: document.getElementById('setupPass').value.trim()
+        };
+        if(!c.ghUser || !c.ghToken || !c.ntfyTopic || !c.pass) return alert("Alles ausfüllen!");
+        localStorage.setItem('oma_conf_v10', JSON.stringify(c));
+        location.reload();
+    }
+    function resetApp() { localStorage.removeItem('oma_conf_v10'); location.reload(); }
+
+    // === 2. HAUPTLOGIK ===
+   
+    async function startApp() {
+        await loadGitHubArchive();
+        connectNtfy();
+    }
+
+    async function loadGitHubArchive() {
+        log("Lade GitHub Archiv...");
+        try {
+            const timeParam = new Date().getTime();
+            const url = `https://api.github.com/repos/${config.ghUser}/${config.ghRepo}/contents/messages.json?t=${timeParam}`;
+            
+            const resp = await fetch(url, { 
+                cache: "no-store", 
+                headers: { 'Authorization': `Bearer ${config.ghToken}`, 'Accept': 'application/vnd.github.v3.raw' }
+            });
+            
+            if(resp.ok) {
+                const archiveData = await resp.json();
+                if (Array.isArray(archiveData)) {
+                    log(`${archiveData.length} Nachrichten im Archiv.`);
+                    for(let item of archiveData) {
+                        
+                        // NEU: Wenn hidden, merken wir uns den Timestamp für später!
+                        if(item.hidden) {
+                            hiddenRegistry.add(item.timestamp);
+                        }
+
+                        await processAndAdd({
+                            ts: item.timestamp,
+                            enc: item.enc,
+                            img: item.img,
+                            hidden: item.hidden 
+                        });
+                    }
+                }
+            } else { log("Archiv leer/Fehler."); }
+        } catch(e) { log("GitHub Fehler: " + e.message); }
+    }
+    
+    function connectNtfy() {
+        log(`Live: ${config.ntfyTopic}`);
+        const es = new EventSource(`https://ntfy.sh/${config.ntfyTopic}/sse?since=all`);
+        
+        es.onopen = () => document.getElementById('statusLight').style.background = '#4cd137';
+        es.onerror = () => document.getElementById('statusLight').style.background = 'red';
+
+        es.onmessage = async (e) => {
+            const data = JSON.parse(e.data);
+            
+            if (data.event === 'message') {
+                
+                // === DELETE CHECK (LIVE) ===
+                // Wir prüfen, ob es ein Lösch-Befehl ist
+                try {
+                    const cmdData = JSON.parse(data.message);
+                    if (cmdData.cmd === 'DELETE' && cmdData.ts) {
+                        log(`Lösche live: ${cmdData.ts}`);
+                        // Aus Array entfernen
+                        messages = messages.filter(m => m.timestamp !== cmdData.ts);
+                        
+                        // Index korrigieren, falls wir gerade am Ende waren
+                        if (currentIndex >= messages.length) currentIndex = Math.max(0, messages.length - 1);
+                        
+                        updateDisplay();
+                        return; // Wichtig: Hier abbrechen!
+                    }
+                } catch(err) { /* Kein JSON-Command, normale Nachricht */ }
+
+                // Normale Nachricht verarbeiten
+                let encPayload = data.attachment ? data.title : data.message;
+                let imgData = data.attachment ? data.attachment.url : null;
+
+                await processAndAdd({
+                    ts: data.time,
+                    enc: encPayload,
+                    img: imgData,
+                    hidden: false // Live Nachrichten sind per se erstmal nicht versteckt
+                });
+            }
+        };
+    }
+
+function updateDisplay() {
+        if(messages.length === 0) {
+            document.getElementById('messageText').innerText = "Warte auf Nachrichten...";
+            document.getElementById('messageImg').style.display = 'none';
+            document.getElementById('metaInfo').innerText = "";
+            return;
+        }
+        
+        const msg = messages[currentIndex];
+        const txtEl = document.getElementById('messageText');
+        const imgEl = document.getElementById('messageImg');
+        const metaEl = document.getElementById('metaInfo');
+
+        txtEl.innerText = msg.text || "";
+        
+        if(msg.image) {
+            imgEl.src = msg.image; 
+            imgEl.style.display = 'block';
+        } else {
+            imgEl.style.display = 'none';
+        }
+
+        const dateObj = new Date(msg.timestamp * 1000);
+        const dateStr = dateObj.toLocaleDateString([], {day:'2-digit', month:'2-digit'});
+        const timeStr = dateObj.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+        const counterStr = `Nachricht ${currentIndex + 1} von ${messages.length}`;
+
+        // HTML: Jetzt 3 Zeilen untereinander
+        metaEl.innerHTML = `
+            <div class="meta-sender">${msg.sender}</div>
+            <div class="meta-details">
+                <span style="font-weight:bold; font-size:1.3em;">${timeStr} Uhr</span>
+                <span style="color:#ddd;">${dateStr}</span>
+                <span style="color:#888; font-size:0.9em; margin-top:2px;">${counterStr}</span>
+            </div>
+        `;
+    }
+
+    // Navigation
+    window.nextMsg = function() { if(currentIndex < messages.length - 1) { currentIndex++; updateDisplay(); } };
+    window.prevMsg = function() { if(currentIndex > 0) { currentIndex--; updateDisplay(); } };
+    
+    document.addEventListener('keydown', (e) => { 
+        if(e.key === 'ArrowLeft') prevMsg(); 
+        if(e.key === 'ArrowRight') nextMsg(); 
+    });
+
+    if(!window.isSecureContext) alert("Achtung: HTTPS erforderlich für Verschlüsselung!");
+
+    // === UI TWEAKS LOGIC ===
+
+    let uiConf = { textSize: 4, imgSize: 50 }; // Standards
+    let clickCnt = 0;
+    let clickTimer = null;
+
+    // 1. Beim Start laden
+    (function initUi() {
+        try {
+            const saved = JSON.parse(localStorage.getItem('oma_ui_settings'));
+            if(saved) uiConf = saved;
+        } catch(e){}
+        applyUi(uiConf.textSize, uiConf.imgSize);
+    })();
+
+    // 2. Secret Click Handler (5x klicken)
+    function handleSecretClick() {
+        clickCnt++;
+        // Reset Zähler nach 500ms Inaktivität
+        clearTimeout(clickTimer);
+        clickTimer = setTimeout(() => { 
+            if(clickCnt < 5) toggleDebug(); // Wenn < 5 Klicks, dann Debug Log togglen
+            clickCnt = 0; 
+        }, 400);
+
+        if(clickCnt >= 5) {
+            clickCnt = 0;
+            clearTimeout(clickTimer);
+            openUiSettings();
+        }
+    }
+
+    // 3. Menü öffnen & Slider setzen
+    function openUiSettings() {
+        document.getElementById('uiTweaksModal').style.display = 'flex';
+        // Slider auf aktuelle Werte setzen
+        document.getElementById('rangeText').value = uiConf.textSize;
+        document.getElementById('rangeImg').value = uiConf.imgSize;
+        // Text Labels
+        document.getElementById('valText').innerText = uiConf.textSize;
+        document.getElementById('valImg').innerText = uiConf.imgSize;
+    }
+
+    // 4. Live Vorschau beim Schieben
+    function previewUi() {
+        const t = document.getElementById('rangeText').value;
+        const i = document.getElementById('rangeImg').value;
+        document.getElementById('valText').innerText = t;
+        document.getElementById('valImg').innerText = i;
+        applyUi(t, i);
+    }
+
+    // 5. Speichern oder Abbrechen
+    function closeUi(save) {
+        document.getElementById('uiTweaksModal').style.display = 'none';
+        if(save) {
+            uiConf.textSize = document.getElementById('rangeText').value;
+            uiConf.imgSize = document.getElementById('rangeImg').value;
+            localStorage.setItem('oma_ui_settings', JSON.stringify(uiConf));
+            alert("Gespeichert!");
+        } else {
+            // Zurücksetzen auf alte Werte
+            applyUi(uiConf.textSize, uiConf.imgSize);
+        }
+    }
+
+    // 6. Werte anwenden (CSS manipulieren)
+    function applyUi(textVal, imgVal) {
+        const txt = document.getElementById('messageText');
+        const img = document.getElementById('messageImg');
+        if(txt) txt.style.fontSize = textVal + "vh";
+        if(img) img.style.maxHeight = imgVal + "vh";
+    }
+</script>
+</body>
+</html>
