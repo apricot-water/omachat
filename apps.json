@@ -5,6 +5,11 @@
     "icon": "🐾"
   },
   {
+    "name": "Memes",
+    "path": "apps/memes/index.html",
+    "icon": "🥳"
+  },
+  {
     "name": "Kanban & Eisenhower",
     "path": "apps/kanban/index.html",
     "icon": "✅"
