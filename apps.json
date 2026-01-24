@@ -1,27 +1,7 @@
 [
   {
-    "name": "TierTicker",
-    "path": "apps/tiere/index.html",
-    "icon": "🐾"
-  },
-  {
-    "name": "Memes",
-    "path": "apps/memes/index.html",
-    "icon": "🥳"
-  },
-  {
-    "name": "Kanban & Eisenhower",
-    "path": "apps/kanban/index.html",
-    "icon": "✅"
-  },
-  {
-    "name": "3-Way Merge Tool",
-    "path": "apps/merge-tool/index.html",
-    "icon": "🔀"
-  },
-  {
-    "name": "Text Diff Tool",
-    "path": "apps/text-diff/index.html",
-    "icon": "📝"
+    "name": "Chat schreiben",
+    "path": "apps/sender/index.html",
+    "icon": "✍️"
   }
 ]
