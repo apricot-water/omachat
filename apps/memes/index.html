@@ -1,0 +1,988 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no, maximum-scale=1">
+<title>Meme Ticker 👾</title>
+<meta name="theme-color" content="#121212">
+
+<!-- PWA MANIFEST (Data URI) -->
+<link rel="manifest" href='data:application/manifest+json,{"name":"Meme Ticker","short_name":"Memes","start_url":".","display":"standalone","background_color":"#121212","theme_color":"#bb86fc","icons":[{"src":"https://emojicdn.elk.sh/👾","sizes":"192x192","type":"image/png"}]}'>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+<!-- Google Font: Fredoka (Headlines) & Inter (Body) -->
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;700&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+
+<style>
+/* =========================================
+   1. VARIABLES & RESET (CYBER THEME)
+   ========================================= */
+*, *::before, *::after { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; }
+input, textarea { user-select: text !important; -webkit-user-select: text !important; }
+
+:root {
+    /* DARK MODE DEFAULT */
+    --bg: #121212;
+    --card: #1e1e1e;
+    --card-hover: #252525;
+    --text: #ffffff;
+    --sub: #b0b0b0;
+    --btn: #333333;
+    
+    /* NEON ACCENTS */
+    --accent: #bb86fc; /* Cyber Purple */
+    --accent-glow: rgba(187, 134, 252, 0.4);
+    --warn-bg: #cf6679; --warn-text: #000;
+    
+    --nav-height: 70px;
+    --shadow: 0 4px 12px rgba(0,0,0,0.3);
+    --radius: 16px;
+}
+
+body {
+    font-family: 'Inter', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    margin: 0; padding: 16px;
+    padding-bottom: 100px; /* Platz für Floating Nav */
+    overflow-x: hidden;
+}
+
+h1, h2, h3 { font-family: 'Fredoka', sans-serif; margin: 0; }
+
+/* UTILITIES */
+.hidden { display: none !important; }
+.fade-in { animation: fadeIn 0.3s ease-out forwards; opacity: 0; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+/* =========================================
+   2. HEADER & SEARCH
+   ========================================= */
+.app-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 20px; margin-top: 10px;
+}
+
+.brand {
+    font-size: 28px; font-weight: 900;
+    background: linear-gradient(90deg, #bb86fc, #03dac6);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    letter-spacing: -1px;
+}
+
+.search-bar {
+    width: 100%;
+    background: var(--card);
+    border: 1px solid #333;
+    padding: 12px 16px;
+    border-radius: 25px;
+    color: var(--text);
+    font-size: 16px;
+    outline: none;
+    box-shadow: var(--shadow);
+    transition: border-color 0.2s;
+}
+.search-bar:focus { border-color: var(--accent); }
+
+/* TAG SCROLLBAR */
+.tag-scroll {
+    display: flex; gap: 8px; overflow-x: auto; 
+    padding: 5px 0 15px 0; scrollbar-width: none;
+}
+.tag-pill {
+    background: var(--btn); padding: 6px 14px; border-radius: 20px;
+    font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer;
+    border: 1px solid transparent; transition: all 0.2s;
+}
+.tag-pill.active {
+    background: var(--accent); color: #000;
+    box-shadow: 0 0 10px var(--accent-glow);
+}
+
+/* =========================================
+   3. MEME GRID (MASONRY-LIKE)
+   ========================================= */
+.meme-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 12px;
+}
+
+.meme-card {
+    background: var(--card);
+    border-radius: var(--radius);
+    overflow: hidden;
+    position: relative;
+    box-shadow: var(--shadow);
+    transition: transform 0.2s;
+    break-inside: avoid;
+    border: 1px solid #333;
+}
+.meme-card:active { transform: scale(0.98); }
+
+.meme-visual {
+    width: 100%;
+    /* Aspect Ratio Hack oder einfach Auto-Height */
+    min-height: 100px;
+    background: #000;
+    display: flex; align-items: center; justify-content: center;
+}
+.meme-visual img, .meme-visual video {
+    width: 100%; height: auto; display: block; object-fit: cover;
+}
+
+.meme-info { padding: 10px; }
+.meme-title { font-weight: bold; font-size: 13px; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;}
+.meme-tags { font-size: 10px; color: var(--sub); text-transform: uppercase; }
+
+.fav-icon {
+    position: absolute; top: 5px; right: 5px;
+    background: rgba(0,0,0,0.5); padding: 4px; border-radius: 50%;
+    font-size: 14px; cursor: pointer; z-index: 2;
+}
+
+/* =========================================
+   4. MODALS & INPUTS
+   ========================================= */
+.modal {
+    display: none; position: fixed; z-index: 1000; left: 0; top: 0;
+    width: 100%; height: 100%; background: rgba(0,0,0,0.85);
+    backdrop-filter: blur(5px);
+    align-items: flex-end; /* Bottom Sheet Style */
+    justify-content: center;
+}
+.modal-content {
+    background: var(--card); width: 100%; max-width: 600px;
+    border-radius: 20px 20px 0 0; padding: 25px;
+    box-shadow: 0 -10px 40px rgba(0,0,0,0.5);
+    animation: slideUp 0.3s ease-out;
+    max-height: 90vh; overflow-y: auto;
+}
+@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+
+/* Inputs */
+input[type="text"], input[type="url"] {
+    width: 100%; padding: 14px; margin-bottom: 15px;
+    background: #121212; border: 1px solid #333; color: white;
+    border-radius: 12px; font-size: 16px;
+}
+button {
+    width: 100%; padding: 14px; border-radius: 12px; font-size: 16px; font-weight: bold;
+    border: none; cursor: pointer; margin-bottom: 10px;
+}
+.btn-primary { background: var(--accent); color: #000; }
+.btn-sec { background: var(--btn); color: white; }
+
+/* Tabs im Modal */
+.tabs { display: flex; gap: 10px; margin-bottom: 15px; }
+.tab { 
+    flex: 1; text-align: center; padding: 10px; 
+    background: var(--btn); border-radius: 8px; font-size: 13px; font-weight: bold; opacity: 0.6;
+}
+.tab.active { background: var(--accent); color: #000; opacity: 1; }
+
+/* =========================================
+   5. NAVIGATION (FLOATING)
+   ========================================= */
+.nav-bar {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+    background: rgba(30,30,30,0.9); backdrop-filter: blur(15px);
+    border: 1px solid rgba(255,255,255,0.1);
+    padding: 8px 20px; border-radius: 40px;
+    display: flex; align-items: center; gap: 20px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    z-index: 900;
+}
+
+.nav-item {
+    font-size: 24px; color: var(--sub); padding: 10px; cursor: pointer;
+    transition: transform 0.2s;
+}
+.nav-item.active { color: var(--accent); transform: translateY(-3px); }
+
+.fab {
+    background: var(--accent); color: #000;
+    width: 55px; height: 55px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 32px; font-weight: bold;
+    box-shadow: 0 0 15px var(--accent-glow);
+    transform: translateY(-20px);
+}
+.fab:active { transform: translateY(-18px) scale(0.95); }
+
+/* TOAST */
+.toast {
+    position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+    background: var(--accent); color: #000; padding: 10px 20px;
+    border-radius: 30px; font-weight: bold; font-size: 13px;
+    z-index: 2000; display: none; box-shadow: 0 5px 20px rgba(0,0,0,0.5);
+}
+
+/* Lightbox Preview */
+#previewContainer {
+    width: 100%; height: 200px; background: #000;
+    border-radius: 12px; margin-bottom: 15px; display: none;
+    align-items: center; justify-content: center; overflow: hidden;
+    border: 1px solid var(--accent);
+}
+#previewImg { max-width: 100%; max-height: 100%; object-fit: contain; }
+/* === NEU: KONTEXT MENÜ === */
+.menu-btn {
+    position: absolute; bottom: 10px; right: 10px;
+    background: rgba(0,0,0,0.6); color: white;
+    width: 30px; height: 30px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; cursor: pointer; z-index: 5;
+    backdrop-filter: blur(4px); transition: transform 0.2s;
+}
+.menu-btn:active { transform: scale(0.9); background: var(--accent); color: black; }
+
+.context-menu {
+    position: fixed; background: #252525; border: 1px solid #444;
+    border-radius: 12px; padding: 5px; min-width: 180px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.8); z-index: 9999;
+    display: flex; flex-direction: column; animation: fadeIn 0.1s;
+}
+.ctx-item {
+    padding: 12px 15px; font-size: 14px; font-weight: 600;
+    display: flex; align-items: center; gap: 10px;
+    cursor: pointer; border-radius: 8px; transition: background 0.1s;
+}
+.ctx-item:active { background: #333; }
+.ctx-danger { color: #ff4757; }
+
+/* === NEU: LIGHTBOX ZOOM === */
+#lightbox {
+    display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: black; z-index: 3000; align-items: center; justify-content: center;
+    overflow: hidden; /* Wichtig für Zoom */
+}
+#lightboxImg {
+    max-width: 100%; max-height: 100%; object-fit: contain;
+    transition: transform 0.1s ease-out; cursor: grab;
+    transform-origin: center center;
+}
+.lb-close {
+    position: absolute; top: 20px; right: 20px;
+    background: rgba(255,255,255,0.2); width: 40px; height: 40px;
+    border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-size: 20px; font-weight: bold; cursor: pointer; z-index: 3001;
+}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="app-header">
+    <div class="brand">MEME TICKER 👾</div>
+    <div style="font-size:12px; opacity:0.6; font-weight:bold;">v1.0</div>
+</div>
+
+<!-- SEARCH & FILTER -->
+<input type="text" id="searchInput" class="search-bar" placeholder="Suche nach Memes..." oninput="renderGallery()">
+
+<div class="tag-scroll" id="tagList">
+    <!-- Wird per JS gefüllt -->
+</div>
+
+<!-- GALLERY -->
+<div id="gallery" class="meme-grid">
+    <!-- Hier landen die Memes -->
+</div>
+
+<div id="emptyState" style="text-align:center; padding: 50px 20px; opacity: 0.5; display:none;">
+    <div style="font-size: 50px; margin-bottom: 10px;">💾</div>
+    <div>Noch keine Memes.<br>Drück auf das <b>+</b> um zu starten!</div>
+</div>
+
+<!-- FLOATING NAV -->
+<div class="nav-bar">
+    <div class="nav-item active" onclick="setFilter('ALL')">🏠</div>
+    <div class="fab" onclick="openAddModal()">+</div>
+    <div class="nav-item" onclick="openSettings()">⚙️</div>
+</div>
+
+<!-- ADD/EDIT MODAL -->
+<div id="addModal" class="modal">
+    <div class="modal-content">
+        <h3 style="margin-bottom:15px;" id="modalTitle">Neues Meme</h3>
+        
+        <!-- TABS -->
+        <div class="tabs">
+            <div id="tabUpload" class="tab active" onclick="switchTab('upload')">📤 Upload</div>
+            <div id="tabLink" class="tab" onclick="switchTab('link')">🔗 Link</div>
+        </div>
+
+        <!-- UPLOAD SECTION -->
+        <div id="sectionUpload">
+            <button class="btn-sec" onclick="document.getElementById('fileInput').click()">Datei wählen 🖼️</button>
+            <input type="file" id="fileInput" hidden accept="image/*" onchange="handleFileSelect(this)">
+        </div>
+
+        <!-- LINK SECTION -->
+        <div id="sectionLink" class="hidden">
+            <input type="url" id="urlInput" placeholder="https://..." onchange="handleUrlInput()">
+            <div style="font-size:11px; opacity:0.6; margin-top:-10px; margin-bottom:10px;">Unterstützt: JPG, PNG, GIF, MP4</div>
+        </div>
+
+        <!-- PREVIEW -->
+        <div id="previewContainer">
+            <img id="previewImg" src="">
+            <!-- Video-Element wird dynamisch erzeugt, falls Video -->
+        </div>
+
+        <input type="text" id="memeTitle" placeholder="Titel / Beschreibung">
+        <input type="text" id="memeTags" placeholder="Tags (z.B. lustig, katze, reaction)...">
+
+        <button class="btn-primary" onclick="saveMeme()">SPEICHERN ✨</button>
+        <button class="btn-sec" style="background:transparent; opacity:0.6;" onclick="closeModal('addModal')">Abbrechen</button>
+    </div>
+</div>
+
+<!-- SETTINGS / DATA MODAL -->
+<div id="settingsModal" class="modal">
+    <div class="modal-content">
+        <h3>Einstellungen & Daten</h3>
+        <p style="font-size:12px; opacity:0.7; margin-bottom:20px;">Backup deine Sammlung regelmäßig!</p>
+        
+        <button class="btn-sec" onclick="exportData()">📦 Backup erstellen (JSON)</button>
+        <button class="btn-sec" onclick="document.getElementById('importFile').click()">📥 Backup wiederherstellen</button>
+        <input type="file" id="importFile" hidden accept=".json" onchange="importData(this)">
+        
+        <div style="margin-top:20px; border-top:1px solid #333; padding-top:20px;">
+            <div style="font-size:12px; margin-bottom:5px;">Datenbank Status: <span id="dbStatus">...</span></div>
+            <button class="btn-sec" style="background:var(--warn-bg); color:black;" onclick="hardReset()">⚠️ Alles löschen</button>
+        </div>
+        <button class="btn-sec" style="background:transparent; margin-top:10px;" onclick="closeModal('settingsModal')">Schließen</button>
+    </div>
+</div>
+
+<!-- TOAST -->
+<div id="toast" class="toast">Nachricht</div>
+
+<!-- LIGHTBOX CONTAINER -->
+<div id="lightbox" onclick="closeLightbox()">
+    <div class="lb-close">✕</div>
+    <img id="lightboxImg" src="">
+    <!-- Video Container (optional, wird dyn. gefüllt) -->
+    <div id="lightboxVideoBox" style="display:none; width:100%; height:100%"></div>
+</div>
+
+<!-- SCRIPT -->
+<script>
+/* =========================================
+   1. GLOBAL STATE & CONFIG
+   ========================================= */
+let memes = JSON.parse(localStorage.getItem('meme_db')) || [];
+let currentFilter = 'ALL';
+let tempMedia = null; // { type: 'blob'|'url', data: ... }
+let editModeId = null;
+
+// IndexedDB Init (für Bilder)
+const DB_NAME = 'MemeTickerDB';
+const STORE_IMGS = 'images';
+let db;
+
+const dbPromise = new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, 1);
+    req.onupgradeneeded = e => {
+        const d = e.target.result;
+        if (!d.objectStoreNames.contains(STORE_IMGS)) d.createObjectStore(STORE_IMGS);
+    };
+    req.onsuccess = e => { db = e.target.result; resolve(db); };
+    req.onerror = e => reject(e);
+});
+
+async function dbSave(id, blob) {
+    const tx = db.transaction(STORE_IMGS, 'readwrite');
+    tx.objectStore(STORE_IMGS).put(blob, id);
+    return new Promise(r => tx.oncomplete = r);
+}
+async function dbGet(id) {
+    const tx = db.transaction(STORE_IMGS, 'readonly');
+    const req = tx.objectStore(STORE_IMGS).get(id);
+    return new Promise(r => req.onsuccess = () => r(req.result));
+}
+async function dbDel(id) {
+    const tx = db.transaction(STORE_IMGS, 'readwrite');
+    tx.objectStore(STORE_IMGS).delete(id);
+}
+
+/* =========================================
+   2. CORE LOGIC
+   ========================================= */
+
+function init() {
+    renderTags();
+    renderGallery();
+    updateDbStats();
+}
+
+function renderTags() {
+    const list = document.getElementById('tagList');
+    // Sammle alle Tags + "ALL" + "FAV"
+    const allTags = new Set();
+    memes.forEach(m => m.tags.forEach(t => allTags.add(t.toLowerCase())));
+    
+    let html = `<div class="tag-pill ${currentFilter==='ALL'?'active':''}" onclick="setFilter('ALL')">Alle</div>`;
+    html += `<div class="tag-pill ${currentFilter==='FAV'?'active':''}" onclick="setFilter('FAV')">❤️ Favs</div>`;
+    
+    Array.from(allTags).sort().forEach(t => {
+        html += `<div class="tag-pill ${currentFilter===t?'active':''}" onclick="setFilter('${t}')">#${t}</div>`;
+    });
+    list.innerHTML = html;
+}
+
+function setFilter(filter) {
+    currentFilter = filter;
+    renderTags();
+    renderGallery();
+}
+
+async function renderGallery() {
+    const grid = document.getElementById('gallery');
+    const search = document.getElementById('searchInput').value.toLowerCase();
+    
+    grid.innerHTML = '';
+    
+    const filtered = memes.filter(m => {
+        if(currentFilter === 'FAV' && !m.isFav) return false;
+        if(currentFilter !== 'ALL' && currentFilter !== 'FAV' && !m.tags.map(t=>t.toLowerCase()).includes(currentFilter)) return false;
+        if(search && !m.title.toLowerCase().includes(search) && !m.tags.join(' ').toLowerCase().includes(search)) return false;
+        return true;
+    });
+
+    if(filtered.length === 0) {
+        document.getElementById('emptyState').style.display = 'block';
+        return;
+    } else {
+        document.getElementById('emptyState').style.display = 'none';
+    }
+
+    filtered.sort((a,b) => b.date - a.date);
+
+    for (let m of filtered) {
+        const card = document.createElement('div');
+        card.className = 'meme-card fade-in';
+        
+        let mediaHTML = '<div class="loader">...</div>';
+        let src = ''; // Wir brauchen die Source für die Lightbox
+
+        // Lokales Bild laden
+        if (m.source === 'local') {
+            const blob = await dbGet(m.imageId);
+            if(blob) {
+                src = URL.createObjectURL(blob);
+                mediaHTML = `<img src="${src}" loading="lazy">`;
+            }
+        } 
+        // URL laden
+        else if (m.source === 'url') {
+            src = m.url;
+            if (m.mediaType === 'video') {
+                // Videos spielen direkt im Grid, kein Zoom nötig aber Fullscreen möglich
+                mediaHTML = `<video src="${src}" loop muted autoplay playsinline></video>`;
+            } else {
+                mediaHTML = `<img src="${src}" loading="lazy" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHRleHQgeT0iMTUiIGZvbnQtc2l6ZT0iMjAiPuKAPC90ZXh0Pjwvc3ZnPg=='">`;
+            }
+        }
+
+        // HTML ZUSAMMENBAUEN
+        // Wichtig: onclick="openLightbox(...)" statt openEdit
+        card.innerHTML = `
+            <div class="fav-icon" onclick="toggleFav('${m.id}')">${m.isFav ? '❤️' : '🤍'}</div>
+            
+            <div class="meme-visual" onclick="openLightbox('${m.id}', '${m.mediaType||'image'}', '${src}')">
+                ${mediaHTML}
+            </div>
+            
+            <!-- NEU: Kontext Menü Button -->
+            <div class="menu-btn" onclick="openMenu(event, '${m.id}')">⋮</div>
+
+            <div class="meme-info">
+                <div class="meme-title">${m.title}</div>
+                <div class="meme-tags">${m.tags.map(t=>'#'+t).join(' ')}</div>
+            </div>
+        `;
+        grid.appendChild(card);
+    }
+}
+/* =========================================
+   3. ADD / SAVE LOGIC
+   ========================================= */
+
+function openAddModal() {
+    editModeId = null;
+    tempMedia = null;
+    document.getElementById('modalTitle').innerText = "Neuer Upload";
+    document.getElementById('fileInput').value = '';
+    document.getElementById('urlInput').value = '';
+    document.getElementById('memeTitle').value = '';
+    document.getElementById('memeTags').value = '';
+    document.getElementById('previewContainer').style.display = 'none';
+    switchTab('upload');
+    document.getElementById('addModal').style.display = 'flex';
+}
+
+function switchTab(tab) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.getElementById('tab' + tab.charAt(0).toUpperCase() + tab.slice(1)).classList.add('active');
+    
+    if(tab === 'upload') {
+        document.getElementById('sectionUpload').classList.remove('hidden');
+        document.getElementById('sectionLink').classList.add('hidden');
+    } else {
+        document.getElementById('sectionUpload').classList.add('hidden');
+        document.getElementById('sectionLink').classList.remove('hidden');
+    }
+}
+
+function handleFileSelect(input) {
+    if (input.files && input.files[0]) {
+        const file = input.files[0];
+        // Lokales Bild lesen
+        const reader = new FileReader();
+        reader.onload = e => {
+            tempMedia = { type: 'local', data: file }; // Wir speichern das File-Objekt für DB
+            showPreview(e.target.result, 'image');
+        };
+        reader.readAsDataURL(file);
+    }
+}
+
+function handleUrlInput() {
+    const url = document.getElementById('urlInput').value.trim();
+    if(!url) return;
+    
+    // Check Media Type
+    const isVideo = url.match(/\.(mp4|webm|mov)$/i);
+    const mediaType = isVideo ? 'video' : 'image';
+    
+    // CORS CHECK & HYBRID LOGIC
+    // Wir versuchen hier NICHT das Bild runterzuladen, da wir das in der 
+    // Tier-App Diskussion als Problem identifiziert haben.
+    // Bei Memes (GIFs/Videos) ist Speichern von URL extrem schwierig.
+    // Wir setzen direkt auf den Link-Modus.
+    
+    tempMedia = { type: 'url', data: url, mediaType: mediaType };
+    showPreview(url, mediaType);
+}
+
+function showPreview(src, type) {
+    const cont = document.getElementById('previewContainer');
+    cont.innerHTML = ''; // Reset
+    cont.style.display = 'flex';
+    
+    if (type === 'video') {
+        cont.innerHTML = `<video src="${src}" autoplay loop muted style="max-width:100%; max-height:100%"></video>`;
+    } else {
+        cont.innerHTML = `<img src="${src}" style="max-width:100%; max-height:100%; object-fit:contain;">`;
+    }
+}
+
+async function saveMeme() {
+    if(!tempMedia && !editModeId) return showToast("Kein Bild gewählt!");
+    
+    const title = document.getElementById('memeTitle').value.trim() || "Unbenannt";
+    const tags = document.getElementById('memeTags').value.split(',').map(t=>t.trim()).filter(t=>t);
+    
+    // UPDATE MODE
+    if (editModeId) {
+        const idx = memes.findIndex(m => m.id === editModeId);
+        if(idx !== -1) {
+            memes[idx].title = title;
+            memes[idx].tags = tags;
+            // Falls neues Medium gewählt wurde
+            if(tempMedia) {
+                // Altes löschen wenn lokal
+                if(memes[idx].source === 'local') await dbDel(memes[idx].imageId);
+                
+                // Neues setzen
+                await processMediaSave(memes[idx]);
+            }
+        }
+    } 
+    // CREATE MODE
+    else {
+        const newMeme = {
+            id: Date.now().toString(),
+            date: Date.now(),
+            title: title,
+            tags: tags,
+            isFav: false
+        };
+        await processMediaSave(newMeme);
+        memes.push(newMeme);
+    }
+    
+    saveToLocal();
+    closeModal('addModal');
+    setFilter('ALL'); // Reset filter to show new
+    showToast("Gespeichert! 👾");
+}
+
+async function processMediaSave(memeObj) {
+    if (tempMedia.type === 'local') {
+        const imgId = 'img_' + Date.now();
+        await dbSave(imgId, tempMedia.data); // Blob in DB
+        memeObj.source = 'local';
+        memeObj.imageId = imgId;
+        memeObj.url = null;
+        memeObj.mediaType = 'image';
+    } else {
+        // URL Mode
+        memeObj.source = 'url';
+        memeObj.url = tempMedia.data;
+        memeObj.imageId = null;
+        memeObj.mediaType = tempMedia.mediaType;
+    }
+}
+
+/* =========================================
+   4. UTILS & ACTIONS
+   ========================================= */
+
+function toggleFav(id) {
+    const m = memes.find(x => x.id === id);
+    if(m) {
+        m.isFav = !m.isFav;
+        saveToLocal();
+        renderGallery();
+        // showToast(m.isFav ? "Zu Favoriten ❤️" : "Entfernt");
+    }
+}
+
+async function openEdit(id) {
+    // Einfache Version: Wir erlauben hier das Bearbeiten von Text/Tags und Löschen
+    const m = memes.find(x => x.id === id);
+    if(!m) return;
+    
+    editModeId = id;
+    tempMedia = null; // Reset temp
+    
+    document.getElementById('modalTitle').innerText = "Bearbeiten";
+    document.getElementById('memeTitle').value = m.title;
+    document.getElementById('memeTags').value = m.tags.join(', ');
+    
+    // Preview laden
+    let src = '';
+    if(m.source === 'local') {
+        const blob = await dbGet(m.imageId);
+        if(blob) src = URL.createObjectURL(blob);
+    } else {
+        src = m.url;
+    }
+    showPreview(src, m.mediaType || 'image');
+    
+    // Löschen Button hinzufügen (Quick hack)
+    const btn = document.querySelector('#addModal .btn-primary');
+    btn.innerText = "ÄNDERUNGEN SPEICHERN";
+    
+    // Delete Button einfügen falls nicht da
+    let delBtn = document.getElementById('delBtn');
+    if(!delBtn) {
+        delBtn = document.createElement('button');
+        delBtn.id = 'delBtn';
+        delBtn.className = 'btn-sec';
+        delBtn.style.background = 'var(--warn-bg)';
+        delBtn.style.color = '#000';
+        delBtn.innerText = "LÖSCHEN 🗑️";
+        delBtn.onclick = () => deleteMeme(id);
+        document.querySelector('#addModal .modal-content').appendChild(delBtn);
+    } else {
+        delBtn.style.display = 'block';
+        delBtn.onclick = () => deleteMeme(id);
+    }
+
+    document.getElementById('addModal').style.display = 'flex';
+}
+
+async function deleteMeme(id) {
+    if(!confirm("Wirklich löschen?")) return;
+    const m = memes.find(x => x.id === id);
+    if(m && m.source === 'local') await dbDel(m.imageId);
+    
+    memes = memes.filter(x => x.id !== id);
+    saveToLocal();
+    closeModal('addModal');
+    renderTags();
+    renderGallery();
+    showToast("Gelöscht 🗑️");
+}
+
+function saveToLocal() {
+    localStorage.setItem('meme_db', JSON.stringify(memes));
+    updateDbStats();
+}
+
+function closeModal(id) {
+    document.getElementById(id).style.display = 'none';
+    if(id === 'addModal') {
+        const delBtn = document.getElementById('delBtn');
+        if(delBtn) delBtn.style.display = 'none';
+        document.querySelector('#addModal .btn-primary').innerText = "SPEICHERN ✨";
+    }
+}
+
+function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.innerText = msg;
+    t.style.display = 'block';
+    setTimeout(() => t.style.display = 'none', 3000);
+}
+
+/* =========================================
+   5. SETTINGS & BACKUP
+   ========================================= */
+function openSettings() {
+    updateDbStats();
+    document.getElementById('settingsModal').style.display = 'flex';
+}
+
+async function updateDbStats() {
+    const el = document.getElementById('dbStatus');
+    if(!el) return;
+    const count = memes.length;
+    el.innerText = `${count} Memes gespeichert.`;
+}
+
+async function exportData() {
+    // Wir exportieren die Metadaten. Die Blobs zu exportieren ist bei Memes oft zu groß für einen String.
+    // Bessere Strategie für V1: Nur die Textdaten exportieren. Bilder müssen manuell gesichert werden 
+    // ODER wir bauen einen komplexen Blob-to-Base64 Exporter (kann den Browser crashen bei vielen Memes).
+    // Hier: Simpler JSON Export der Metadaten + URLs. Lokale Bilder werden NICHT exportiert (Limitierung V1).
+    
+    const exportObj = { 
+        memes: memes.filter(m => m.source === 'url'), // Nur URLs sind sicher exportierbar im JSON
+        date: new Date()
+    };
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportObj));
+    const a = document.createElement('a');
+    a.href = dataStr;
+    a.download = "meme_backup_links.json";
+    a.click();
+    alert("Hinweis: Nur Memes mit Links wurden exportiert! Lokale Uploads werden in V1 nicht unterstützt (zu groß).");
+}
+
+function importData(input) {
+    const file = input.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+        try {
+            const data = JSON.parse(e.target.result);
+            if(data.memes) {
+                // Merge
+                data.memes.forEach(m => {
+                    if(!memes.some(exist => exist.url === m.url)) memes.push(m);
+                });
+                saveToLocal();
+                renderTags();
+                renderGallery();
+                showToast("Import erfolgreich!");
+                closeModal('settingsModal');
+            }
+        } catch(err) { alert("Fehler beim Import"); }
+    };
+    reader.readAsText(file);
+}
+
+async function hardReset() {
+    if(confirm("ALLES LÖSCHEN? Auch alle Bilder?")) {
+        localStorage.clear();
+        // DB löschen
+        const req = indexedDB.deleteDatabase(DB_NAME);
+        req.onsuccess = () => location.reload();
+    }
+}
+/* =========================================
+   6. CONTEXT MENU & SHARING
+   ========================================= */
+
+// Menü öffnen
+function openMenu(e, id) {
+    e.stopPropagation();
+    // Altes Menü schließen
+    closeMenu();
+
+    const m = memes.find(x => x.id === id);
+    if(!m) return;
+
+    // Menü erstellen
+    const menu = document.createElement('div');
+    menu.className = 'context-menu';
+    
+    // Positionierung (einfach gehalten, damit es nicht aus dem Screen ragt)
+    const rect = e.target.getBoundingClientRect();
+    menu.style.right = (window.innerWidth - rect.right) + 'px';
+    menu.style.bottom = (window.innerHeight - rect.top) + 'px';
+
+    menu.innerHTML = `
+        <div class="ctx-item" onclick="shareMeme('${id}')">📤 Teilen / Senden</div>
+        <div class="ctx-item" onclick="openEdit('${id}')">✏️ Bearbeiten</div>
+        <div class="ctx-item ctx-danger" onclick="deleteMeme('${id}')">🗑️ Löschen</div>
+    `;
+
+    document.body.appendChild(menu);
+    
+    // Klick außerhalb schließt Menü
+    setTimeout(() => document.addEventListener('click', closeMenu, {once:true}), 10);
+}
+
+function closeMenu() {
+    document.querySelectorAll('.context-menu').forEach(el => el.remove());
+}
+
+// Die Share-Magie
+async function shareMeme(id) {
+    const m = memes.find(x => x.id === id);
+    if(!m) return;
+
+    // Fall 1: Es ist eine URL -> Link teilen
+    if (m.source === 'url') {
+        if (navigator.share) {
+            navigator.share({ title: m.title, text: `Gönn dir: ${m.title}`, url: m.url });
+        } else {
+            navigator.clipboard.writeText(m.url);
+            showToast("Link kopiert!");
+        }
+    } 
+    // Fall 2: Es ist lokal -> Echtes Bild teilen
+    else if (m.source === 'local') {
+        try {
+            const blob = await dbGet(m.imageId);
+            if (!blob) return showToast("Bildfehler");
+            
+            const file = new File([blob], "meme.jpg", { type: blob.type });
+            
+            if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                await navigator.share({
+                    files: [file],
+                    title: m.title,
+                    text: m.title
+                });
+            } else {
+                showToast("Teilen nicht unterstützt");
+            }
+        } catch(e) {
+            console.error(e);
+            showToast("Fehler beim Teilen");
+        }
+    }
+}
+
+/* =========================================
+   7. LIGHTBOX ZOOM ENGINE
+   ========================================= */
+let zoomScale = 1;
+let zoomX = 0, zoomY = 0;
+let isDragging = false;
+let startX = 0, startY = 0, lastDist = 0;
+
+function openLightbox(id, type, src) {
+    const lb = document.getElementById('lightbox');
+    const img = document.getElementById('lightboxImg');
+    const vidBox = document.getElementById('lightboxVideoBox');
+    
+    lb.style.display = 'flex';
+    
+    // Reset Zoom
+    zoomScale = 1; zoomX = 0; zoomY = 0;
+    updateTransform();
+
+    if (type === 'video') {
+        img.style.display = 'none';
+        vidBox.style.display = 'flex';
+        vidBox.innerHTML = `<video src="${src}" controls autoplay style="max-width:100%; max-height:100%"></video>`;
+    } else {
+        vidBox.style.display = 'none';
+        vidBox.innerHTML = ''; // Video stoppen
+        img.style.display = 'block';
+        img.src = src;
+        initZoom(img); // Zoom aktivieren
+    }
+}
+
+function closeLightbox() {
+    document.getElementById('lightbox').style.display = 'none';
+    document.getElementById('lightboxVideoBox').innerHTML = ''; // Speicher freigeben
+}
+
+// Zoom Logik (Pinch & Pan)
+function updateTransform() {
+    const img = document.getElementById('lightboxImg');
+    img.style.transform = `translate(${zoomX}px, ${zoomY}px) scale(${zoomScale})`;
+}
+
+function initZoom(img) {
+    img.onmousedown = startDrag;
+    img.ontouchstart = startDrag;
+    
+    img.onmousemove = moveDrag;
+    img.ontouchmove = moveDrag;
+    
+    img.onmouseup = endDrag;
+    img.ontouchend = endDrag;
+    
+    // Double Tap to Reset
+    let lastTap = 0;
+    img.onclick = (e) => {
+        e.stopPropagation(); // Verhindert Schließen
+        const now = Date.now();
+        if (now - lastTap < 300) {
+            zoomScale = 1; zoomX = 0; zoomY = 0;
+            updateTransform();
+        }
+        lastTap = now;
+    };
+}
+
+function getDistance(touches) {
+    return Math.hypot(touches[0].pageX - touches[1].pageX, touches[0].pageY - touches[1].pageY);
+}
+
+function startDrag(e) {
+    if (e.touches && e.touches.length === 2) {
+        isDragging = false; lastDist = getDistance(e.touches);
+    } else if (zoomScale > 1) {
+        isDragging = true;
+        startX = (e.touches ? e.touches[0].clientX : e.clientX) - zoomX;
+        startY = (e.touches ? e.touches[0].clientY : e.clientY) - zoomY;
+        document.getElementById('lightboxImg').style.transition = 'none';
+    }
+}
+
+function moveDrag(e) {
+    // Pinch Zoom
+    if (e.touches && e.touches.length === 2) {
+        e.preventDefault();
+        const dist = getDistance(e.touches);
+        const delta = dist / lastDist;
+        zoomScale = Math.min(Math.max(1, zoomScale * delta), 5);
+        lastDist = dist;
+        updateTransform();
+        return;
+    }
+    // Pan (Verschieben)
+    if (isDragging && zoomScale > 1) {
+        e.preventDefault();
+        const x = (e.touches ? e.touches[0].clientX : e.clientX);
+        const y = (e.touches ? e.touches[0].clientY : e.clientY);
+        zoomX = x - startX;
+        zoomY = y - startY;
+        updateTransform();
+    }
+}
+
+function endDrag() {
+    isDragging = false;
+    document.getElementById('lightboxImg').style.transition = 'transform 0.1s ease-out';
+}
+
+// Start
+init();
+
+</script>
+</body>
+</html>
