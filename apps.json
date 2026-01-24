@@ -3,5 +3,10 @@
     "name": "Chat schreiben",
     "path": "apps/sender/index.html",
     "icon": "✍️"
+  },
+  {
+    "name": "Omas Ansicht",
+    "path": "apps/empfaenger/index.html",
+    "icon": "👵"
   }
 ]
