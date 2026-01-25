@@ -244,7 +244,7 @@
                 Object.assign(conf, json);
                 localStorage.setItem('oma_conf_v2', JSON.stringify(conf));
                 history.replaceState(null, null, window.location.pathname);
-                alert("Einstellungen importiert! 🎉");
+              //  alert("Einstellungen importiert! 🎉");
             } catch(e) { alert("Link fehlerhaft."); }
         }
         document.getElementById('confTopic').value = conf.t || '';
