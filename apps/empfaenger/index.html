@@ -8,7 +8,20 @@
 <style>
     /* === OMA UI DESIGN === */
     :root { --bg: #000000; --text: #ffffff; --accent: #4cd137; }
-    * { box-sizing: border-box; }
+   * { 
+        box-sizing: border-box;
+        /* === KIOSK SCHUTZ === */
+        -webkit-user-select: none;  /* Safari/Chrome: Kein Text markieren */
+        user-select: none;          /* Standard: Kein Text markieren */
+        -webkit-touch-callout: none;/* iOS: Kein Kontextmenü bei langem Drücken */
+        -webkit-tap-highlight-color: transparent; /* Kein Aufblinken beim Tippen */
+    }
+
+    /* Wichtig: Eingabefelder im Setup müssen bedienbar bleiben */
+    input { 
+        -webkit-user-select: text; 
+        user-select: text; 
+    }
     body { margin: 0; padding: 0; background-color: var(--bg); color: var(--text); font-family: sans-serif; overflow: hidden; height: 100vh; width: 100vw; display: flex; flex-direction: column; }
     
     /* HEADER */
