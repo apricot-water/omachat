@@ -290,12 +290,11 @@ let config = JSON.parse(localStorage.getItem('oma_conf_v10')) || null;
     }
 
     // === PROCESS AND ADD (UPDATED) ===
- async function processAndAdd(item) {
+async function processAndAdd(item) {
         // 1. ZOMBIE & BLACKLIST CHECK
-        // Wenn im Item hidden gesetzt ist ODER wir es schon auf der schwarzen Liste haben:
         if (item.hidden || hiddenRegistry.has(item.ts)) {
-            hiddenRegistry.add(item.ts); // Fürs nächste Mal merken
-            return; // Und tschüss
+            hiddenRegistry.add(item.ts); 
+            return; 
         }
         
         // 2. Validierung
@@ -303,9 +302,6 @@ let config = JSON.parse(localStorage.getItem('oma_conf_v10')) || null;
         if (messages.some(m => m.timestamp === item.ts)) return;
 
         let plain = { sender: '?', text: 'Fehler', image: null };
-        
-        // ... (AB HIER BLEIBT ALLES WIE VORHER: Decrypt Text, Decrypt Bild, Push) ...
-        // Hier zur Sicherheit der Rest, damit du nichts falsch kopierst:
         
         const jsonStr = await decryptStr(item.enc, config.pass);
         if(jsonStr) {
@@ -343,10 +339,14 @@ let config = JSON.parse(localStorage.getItem('oma_conf_v10')) || null;
             image: plain.image
         });
         
+        // Nach Zeit sortieren (älteste zuerst, neueste am Ende)
         messages.sort((a,b) => a.timestamp - b.timestamp);
         
-        const wasAtEnd = (currentIndex >= messages.length - 2);
-        if (wasAtEnd || messages.length === 1) currentIndex = messages.length - 1;
+        // === AUTO-JUMP (UPDATED) ===
+        // Wir setzen den Index IMMER auf das letzte Element (die neuste Nachricht).
+        // Egal ob Oma gerade alte Bilder schaut - wenn es klingelt, wird das Neue gezeigt.
+        currentIndex = messages.length - 1;
+        
         updateDisplay();
     }
     
