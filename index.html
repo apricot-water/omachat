@@ -145,14 +145,19 @@ body {
         <iframe id="app-frame" name="app-frame" allow="clipboard-read; clipboard-write; camera; microphone; fullscreen"></iframe>
     </main>
 
-    <script>
+ <script>
         const frame = document.getElementById('app-frame');
         const navContainer = document.getElementById('nav-items');
         const loader = document.getElementById('loader');
         const sidebar = document.getElementById('sidebar');
         const toggleBtn = document.getElementById('toggle-btn');
 
-        // Toggle Funktion (Dein Original Code)
+        // === FIX: Config-Hash sofort beim Start sichern ===
+        // Wir speichern den Hash (z.B. #config=...) in einer Variable.
+        // Selbst wenn sich die URL oben ändert, bleibt er hier erhalten.
+        const globalConfigHash = window.location.hash; 
+
+        // Toggle Funktion (Sidebar)
         toggleBtn.onclick = () => {
             sidebar.classList.toggle('collapsed');
             if(sidebar.classList.contains('collapsed')) {
@@ -174,11 +179,9 @@ body {
             loader.style.display = 'block';
             frame.style.opacity = '0';
             
-            // === ÄNDERUNG: Hash weiterreichen ===
-            // Wir nehmen alles ab # aus der Dashboard-URL und hängen es an die App-URL
-            // Wenn kein Hash da ist, ist window.location.hash einfach ein leerer String ""
-            frame.src = url + window.location.hash;
-            // ====================================
+            // === WICHTIG: Hier nutzen wir den gespeicherten Hash ===
+            // Egal welche App geladen wird, sie bekommt den Config-String angehängt
+            frame.src = url + globalConfigHash;
 
             frame.onload = () => {
                 loader.style.display = 'none';
@@ -192,7 +195,7 @@ body {
             }
         }
 
-        // --- HIER IST DIE NEUE URL LOGIK ---
+        // Apps laden und Links erstellen
         fetch('apps.json')
             .then(res => res.json())
             .then(apps => {
@@ -208,9 +211,11 @@ body {
                     div.innerHTML = `<span class="icon">${app.icon}</span> ${app.name}`;
                     
                     div.onclick = () => {
-                        // URL updaten ohne Reload
-                        const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname + '?app=' + appKey;
+                        // URL im Browser updaten (damit Reload auf der gleichen App bleibt)
+                        // Wir hängen auch hier optisch den Hash wieder dran, falls gewünscht
+                        const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname + '?app=' + appKey + globalConfigHash;
                         window.history.pushState({path: newUrl}, '', newUrl);
+                        
                         loadApp(app.path, div);
                     };
                     navContainer.appendChild(div);
