@@ -329,7 +329,8 @@ let config = JSON.parse(localStorage.getItem('oma_conf_v10')) || null;
     }
 
     // === PROCESS AND ADD (UPDATED) ===
- async function processAndAdd(item) {
+ // === PROCESS AND ADD (MIT SILENT MODUS) ===
+    async function processAndAdd(item, silent = false) {
         // 1. ZOMBIE & BLACKLIST CHECK
         if (item.hidden || hiddenRegistry.has(item.ts)) {
             hiddenRegistry.add(item.ts); 
@@ -378,15 +379,16 @@ let config = JSON.parse(localStorage.getItem('oma_conf_v10')) || null;
             image: plain.image
         });
         
-        // Nach Zeit sortieren (älteste zuerst, neueste am Ende)
+        // Sortieren & Springen
         messages.sort((a,b) => a.timestamp - b.timestamp);
-        
-        // === AUTO-JUMP (UPDATED) ===
-        // Wir setzen den Index IMMER auf das letzte Element (die neuste Nachricht).
-        // Egal ob Oma gerade alte Bilder schaut - wenn es klingelt, wird das Neue gezeigt.
         currentIndex = messages.length - 1;
         
-        updateDisplay();
+        // HIER IST DER TRICK:
+        // Wenn silent = true (Archiv), machen wir hier NICHTS.
+        // Wenn silent = false (Live), updaten wir sofort!
+        if (!silent) {
+            updateDisplay(); 
+        }
     }
     
     async function decryptStr(base64Data, password) {
@@ -508,7 +510,7 @@ let config = JSON.parse(localStorage.getItem('oma_conf_v10')) || null;
         connectNtfy();
     }
 
-    async function loadGitHubArchive() {
+  async function loadGitHubArchive() {
         log("Lade GitHub Archiv...");
         try {
             const timeParam = new Date().getTime();
@@ -523,25 +525,25 @@ let config = JSON.parse(localStorage.getItem('oma_conf_v10')) || null;
                 const archiveData = await resp.json();
                 if (Array.isArray(archiveData)) {
                     log(`${archiveData.length} Nachrichten im Archiv.`);
+                    
                     for(let item of archiveData) {
+                        if(item.hidden) hiddenRegistry.add(item.timestamp);
                         
-                        // NEU: Wenn hidden, merken wir uns den Timestamp für später!
-                        if(item.hidden) {
-                            hiddenRegistry.add(item.timestamp);
-                        }
-
+                        // WICHTIG: Hier übergeben wir 'true' -> "Bitte leise laden"
                         await processAndAdd({
                             ts: item.timestamp,
                             enc: item.enc,
                             img: item.img,
                             hidden: item.hidden 
-                        });
+                        }, true); 
                     }
+                    
+                    // JETZT ERST updaten wir das Display (und senden 1 Log für das neuste Bild)
+                    updateDisplay();
                 }
             } else { log("Archiv leer/Fehler."); }
         } catch(e) { log("GitHub Fehler: " + e.message); }
     }
-
 
     function connectNtfy() {
         log(`Live: ${config.ntfyTopic}`);
