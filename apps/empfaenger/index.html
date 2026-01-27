@@ -8,7 +8,7 @@
 <style>
     /* === OMA UI DESIGN === */
     :root { --bg: #000000; --text: #ffffff; --accent: #4cd137; }
-* { 
+   * { 
         box-sizing: border-box;
         /* === KIOSK SCHUTZ === */
         -webkit-user-select: none;  /* Safari/Chrome: Kein Text markieren */
@@ -158,33 +158,6 @@
         line-height: 1.2;    /* Zeilen enger zusammenrücken */
         font-weight: normal;
     }
-/* === LIGHTBOX (ZOOM) === */
-    #lightbox { 
-        display: none; 
-        position: fixed; 
-        top: 0; left: 0; 
-        width: 100vw; height: 100vh; 
-        background: black; 
-        z-index: 999; /* Über allem anderen */
-        align-items: center; 
-        justify-content: center; 
-    }
-    #lightbox img { 
-        max-width: 100%; 
-        max-height: 100%; 
-        object-fit: contain; 
-        box-shadow: 0 0 50px rgba(255,255,255,0.1);
-    }
-    /* Kleine Hilfe für das Admin-Menü Layout */
-    .setting-row { 
-        display: flex; 
-        justify-content: space-between; 
-        align-items: center; 
-        margin-top: 10px; 
-        color: #ccc; 
-        font-size: 14px;
-    }
-    
 </style>
 </head>
 <body>
@@ -214,7 +187,7 @@
     <!-- UI BEREICHE -->
     <div id="metaInfo"></div>
     <div id="displayArea">
-        <img id="messageImg" src="" onclick="openLightbox()">
+        <img id="messageImg" src="">
         <div id="messageText">Lade Archiv...</div>
     </div>
     <div id="btnPrev" class="nav-zone" onclick="prevMsg()">❮</div>
@@ -229,30 +202,11 @@
         
         <label>Bildhöhe: <span id="valImg">50</span>vh</label>
         <input type="range" id="rangeImg" min="10" max="90" step="5" oninput="previewUi()">
-<!-- HIER EINFÜGEN: Nach den Slidern, aber VOR den Buttons -->
-    
-    <div style="border-top: 1px solid #444; margin: 15px 0;"></div>
-
-    <div class="setting-row">
-        <label for="checkZoom">Bild-Zoom aktivieren?</label>
-        <input type="checkbox" id="checkZoom" style="width:20px; height:20px;">
-    </div>
-
-    <div class="setting-row">
-        <label>Anzeigedauer (Sekunden):</label>
-        <input type="number" id="numZoomTime" min="3" max="60" style="width:60px; padding:5px; text-align:center;">
-    </div>
-
-    <!-- DANACH kommen deine Buttons (Abbruch/Speichern) -->
         
         <div style="display:flex; gap:10px; margin-top:20px; width:100%;">
             <button onclick="closeUi(false)" style="background:#555; flex:1;">Abbruch</button>
             <button onclick="closeUi(true)" style="background:var(--accent); flex:1;">Speichern</button>
         </div>
-    </div>
-    <!-- LIGHTBOX OVERLAY -->
-    <div id="lightbox" onclick="closeLightbox()">
-        <img id="lightboxImg" src="">
     </div>
 <script>
     // === 0. MAGIC LINK CHECK (Muss ganz oben sein) ===
@@ -336,7 +290,7 @@ let config = JSON.parse(localStorage.getItem('oma_conf_v10')) || null;
     }
 
     // === PROCESS AND ADD (UPDATED) ===
- async function processAndAdd(item) {
+async function processAndAdd(item) {
         // 1. ZOMBIE & BLACKLIST CHECK
         if (item.hidden || hiddenRegistry.has(item.ts)) {
             hiddenRegistry.add(item.ts); 
@@ -568,22 +522,17 @@ function updateDisplay() {
 
     if(!window.isSecureContext) alert("Achtung: HTTPS erforderlich für Verschlüsselung!");
 
-// === UI TWEAKS LOGIC & LIGHTBOX ===
+    // === UI TWEAKS LOGIC ===
 
-    // Standards erweitert: zoomActive = false, zoomTime = 10 Sekunden
-    let uiConf = { textSize: 4, imgSize: 50, zoomActive: false, zoomTime: 10 }; 
+    let uiConf = { textSize: 4, imgSize: 50 }; // Standards
     let clickCnt = 0;
     let clickTimer = null;
-    let lightboxTimer = null; // Timer Variable für Auto-Close
 
     // 1. Beim Start laden
     (function initUi() {
         try {
             const saved = JSON.parse(localStorage.getItem('oma_ui_settings'));
-            if(saved) {
-                // Merge falls alte Config ohne Zoom-Werte war
-                uiConf = { ...uiConf, ...saved };
-            }
+            if(saved) uiConf = saved;
         } catch(e){}
         applyUi(uiConf.textSize, uiConf.imgSize);
     })();
@@ -591,9 +540,10 @@ function updateDisplay() {
     // 2. Secret Click Handler (5x klicken)
     function handleSecretClick() {
         clickCnt++;
+        // Reset Zähler nach 500ms Inaktivität
         clearTimeout(clickTimer);
         clickTimer = setTimeout(() => { 
-            if(clickCnt < 5) toggleDebug(); 
+            if(clickCnt < 5) toggleDebug(); // Wenn < 5 Klicks, dann Debug Log togglen
             clickCnt = 0; 
         }, 400);
 
@@ -604,22 +554,18 @@ function updateDisplay() {
         }
     }
 
-    // 3. Menü öffnen & Werte setzen
+    // 3. Menü öffnen & Slider setzen
     function openUiSettings() {
         document.getElementById('uiTweaksModal').style.display = 'flex';
-        
-        // Slider Werte
+        // Slider auf aktuelle Werte setzen
         document.getElementById('rangeText').value = uiConf.textSize;
         document.getElementById('rangeImg').value = uiConf.imgSize;
+        // Text Labels
         document.getElementById('valText').innerText = uiConf.textSize;
         document.getElementById('valImg').innerText = uiConf.imgSize;
-
-        // NEU: Zoom Einstellungen laden
-        document.getElementById('checkZoom').checked = uiConf.zoomActive;
-        document.getElementById('numZoomTime').value = uiConf.zoomTime || 10;
     }
 
-    // 4. Live Vorschau beim Schieben (Slider)
+    // 4. Live Vorschau beim Schieben
     function previewUi() {
         const t = document.getElementById('rangeText').value;
         const i = document.getElementById('rangeImg').value;
@@ -634,54 +580,21 @@ function updateDisplay() {
         if(save) {
             uiConf.textSize = document.getElementById('rangeText').value;
             uiConf.imgSize = document.getElementById('rangeImg').value;
-            
-            // NEU: Zoom Werte speichern
-            uiConf.zoomActive = document.getElementById('checkZoom').checked;
-            uiConf.zoomTime = parseInt(document.getElementById('numZoomTime').value) || 10;
-
             localStorage.setItem('oma_ui_settings', JSON.stringify(uiConf));
             alert("Gespeichert!");
         } else {
-            // Reset auf alte Werte bei Abbruch
+            // Zurücksetzen auf alte Werte
             applyUi(uiConf.textSize, uiConf.imgSize);
         }
     }
 
-    // 6. Werte anwenden (CSS)
+    // 6. Werte anwenden (CSS manipulieren)
     function applyUi(textVal, imgVal) {
         const txt = document.getElementById('messageText');
         const img = document.getElementById('messageImg');
         if(txt) txt.style.fontSize = textVal + "vh";
         if(img) img.style.maxHeight = imgVal + "vh";
     }
-
-    // === NEU: LIGHTBOX FUNKTIONEN ===
-    
-    function openLightbox() {
-        // Nur öffnen, wenn im Admin-Menü aktiviert UND ein Bild da ist
-        const src = document.getElementById('messageImg').src;
-        if(!uiConf.zoomActive || !src || document.getElementById('messageImg').style.display === 'none') return;
-
-        const lb = document.getElementById('lightbox');
-        const lbImg = document.getElementById('lightboxImg');
-        
-        lbImg.src = src;
-        lb.style.display = 'flex'; // Zeigen
-
-        // Auto-Close Timer starten
-        clearTimeout(lightboxTimer); // Sicherheitshalber alte Timer löschen
-        const ms = uiConf.zoomTime * 1000;
-        lightboxTimer = setTimeout(closeLightbox, ms);
-        
-        log(`Lightbox offen für ${uiConf.zoomTime}s`);
-    }
-
-    function closeLightbox() {
-        const lb = document.getElementById('lightbox');
-        lb.style.display = 'none';
-        clearTimeout(lightboxTimer); // Timer stoppen, falls manuell geschlossen
-    }
-    
 </script>
 </body>
 </html>
