@@ -255,36 +255,29 @@
         <img id="lightboxImg" src="">
     </div>
 <script>
-    // === 0. MAGIC LINK CHECK (Muss ganz oben sein) ===
+// === 0. MAGIC LINK CHECK ===
     (function checkMagicLink() {
         const hash = window.location.hash;
         if (hash.startsWith('#config=')) {
             try {
-                // Decodieren
                 const b64 = hash.substring(8);
                 const json = JSON.parse(atob(b64));
                 
-                // Mapping der Short-Keys (Sender) auf Config-Keys (Empfänger)
                 const newConf = {
                     ghUser: json.gu,
                     ghRepo: json.gr,
                     ghToken: json.gt,
                     ntfyTopic: json.t,
-                    pass: json.p
+                    pass: json.p,
+                    deviceId: json.did // <--- NEU: Device ID (optional)
                 };
 
-                // Validierung
                 if(newConf.ghUser && newConf.ntfyTopic && newConf.pass) {
                     localStorage.setItem('oma_conf_v10', JSON.stringify(newConf));
                     history.replaceState(null, null, window.location.pathname);
                     location.reload();
-                } else {
-                    alert("Link unvollständig.");
-                }
-            } catch (e) {
-                console.error("Link Error", e);
-                alert("Konfigurations-Link fehlerhaft.");
-            }
+                } else { alert("Link unvollständig."); }
+            } catch (e) { console.error("Link Error", e); alert("Link fehlerhaft."); }
         }
     })();
 
@@ -418,6 +411,55 @@ let config = JSON.parse(localStorage.getItem('oma_conf_v10')) || null;
         if(config) {
             document.getElementById('ghUser').value = config.ghUser || "";
             document.getElementById('setupTopic').value = config.ntfyTopic || "";
+        }
+    }
+
+    // === NEU: LOGGING & VERSCHLÜSSELUNG ===
+    
+    // Wir brauchen jetzt auch Encrypt für den Rückkanal
+    async function encryptStr(plainText, password) {
+        try {
+            const salt = window.crypto.getRandomValues(new Uint8Array(16));
+            const iv = window.crypto.getRandomValues(new Uint8Array(12));
+            const key = await getKey(password, salt);
+            const encData = await window.crypto.subtle.encrypt({name:"AES-GCM", iv:iv}, key, enc.encode(plainText));
+            
+            // Alles zusammenpacken: Salt + IV + Data
+            const u8 = new Uint8Array(16 + 12 + encData.byteLength);
+            u8.set(salt, 0);
+            u8.set(iv, 16);
+            u8.set(new Uint8Array(encData), 28);
+            
+            // Zu Base64
+            let bin = "";
+            for(let i=0; i<u8.length; i++) bin += String.fromCharCode(u8[i]);
+            return btoa(bin);
+        } catch(e) { console.error("Encrypt Fail", e); return null; }
+    }
+
+    async function sendReadReceipt(msg) {
+        // Nur senden, wenn eine DeviceID in der Config ist!
+        if(!config.deviceId) return; 
+
+        const logData = {
+            type: "read",
+            ts: Math.floor(Date.now() / 1000), // Wann gelesen?
+            dev: config.deviceId,              // Wer? (aus Config)
+            sender: msg.sender,                // Von wem war die Nachricht?
+            msg_ts: msg.timestamp,             // Welche Nachricht genau?
+            snippet: msg.text ? msg.text.substring(0, 20) : "Bild ohne Text" // Erste Worte
+        };
+
+        const encLog = await encryptStr(JSON.stringify(logData), config.pass);
+        
+        if(encLog) {
+            // Wir senden an NTFY: Message="LOG_ENTRY", Title=VerschlüsselterPayload
+            // Das Python Skript filtert dann nach "LOG_ENTRY"
+            fetch(`https://ntfy.sh/${config.ntfyTopic}`, {
+                method: 'POST',
+                body: "LOG_ENTRY", 
+                headers: { 'Title': encLog }
+            }).then(() => log("Log gesendet.")).catch(e => console.error(e));
         }
     }
 
@@ -555,6 +597,7 @@ function updateDisplay() {
                 <span style="color:#888; font-size:0.9em; margin-top:2px;">${counterStr}</span>
             </div>
         `;
+    sendReadReceipt(msg);
     }
 
     // Navigation
