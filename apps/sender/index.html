@@ -381,9 +381,12 @@
             <div id="qrGenView" class="qr-container">
                 <div style="font-size:14px; color:var(--text-sub)">Diesen Code mit einem anderen Gerät scannen, um die Einstellungen zu kopieren.</div>
                 <div id="qrCodeDiv"></div>
+                <!-- Im HTML unter dem div id="qrCodeDiv" einfügen -->
+<button class="btn-primary" style="margin-top:10px; font-size:14px;" onclick="copyLink()">Link kopieren 📋</button>
                 <div style="color:var(--danger); font-size:12px; font-weight:bold;">⚠️ Enthält Passwörter! Nicht öffentlich zeigen.</div>
             </div>
-
+        
+            
             <!-- SCAN VIEW -->
             <div id="qrScanView" class="qr-container" style="display:none">
                 <div id="qrReader"></div>
@@ -436,7 +439,12 @@
         toggleSettings(false);
         if(activeTab === 'view') { loadViewerData(); startLiveViewer(); }
     }
-
+function copyLink() {
+        const jsonConf = JSON.stringify(conf);
+        const payload = window.location.href.split('#')[0] + "#config=" + btoa(jsonConf);
+        navigator.clipboard.writeText(payload).then(() => alert("Link kopiert! Sende ihn an das andere Handy."));
+    }
+    
     // --- 2. UI NAVIGATION ---
     let activeTab = 'send';
     function toggleSidebar(open) {
@@ -1403,24 +1411,43 @@ function switchTab(tab) {
     function startScanner() {
         if(!html5QrCode) html5QrCode = new Html5Qrcode("qrReader");
         
+        // Status Update für den User
+        document.getElementById('scanStatus').innerText = "Starte Kamera...";
+
         html5QrCode.start(
             { facingMode: "environment" }, 
             { fps: 10, qrbox: { width: 250, height: 250 } },
             (decodedText, decodedResult) => {
-                // Erfolg!
-                if(decodedText.includes("#config=")) {
-                    html5QrCode.stop();
-                    window.location.href = decodedText;
-                    window.location.reload();
-                } else {
-                    document.getElementById('scanStatus').innerText = "Kein gültiger Config-QR Code.";
+                // PRÜFUNG: Enthält der Text unsere Config?
+                if(decodedText.includes("config=")) {
+                    // Scanner sofort stoppen
+                    html5QrCode.stop().then(() => {
+                        console.log("Scan erfolgreich:", decodedText);
+                        
+                        // HIER IST DER FIX:
+                        // Wir isolieren den Hash-Teil, egal welche URL davor steht
+                        const parts = decodedText.split('#');
+                        const hashPart = parts.length > 1 ? '#' + parts[parts.length - 1] : decodedText;
+                        
+                        // Wenn der String direkt mit config= anfängt (ohne #), fügen wir es hinzu
+                        const finalHash = hashPart.startsWith('#') ? hashPart : '#' + hashPart;
+
+                        // Auf die EIGENE URL anwenden und neu laden
+                        window.location.hash = finalHash;
+                        window.location.reload();
+                    }).catch(err => console.error("Stop failed", err));
                 }
             },
             (errorMessage) => {
-                // Parse error, ignorieren
+                // Parsing Fehler sind normal während des Scannens, ignorieren
             }
         ).catch(err => {
-            document.getElementById('scanStatus').innerText = "Kamera Fehler: " + err;
+            // DIESER FEHLER IST WICHTIG
+            console.error(err);
+            document.getElementById('scanStatus').innerHTML = 
+                `<span style="color:var(--danger)">Kamera Fehler!</span><br>
+                 <span style="font-size:11px">Browser blockiert Zugriff.<br>
+                 Läuft die Seite über <b>HTTPS</b>?</span>`;
         });
     }
     
