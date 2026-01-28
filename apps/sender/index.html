@@ -204,7 +204,15 @@
     .qr-container { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; text-align: center; }
     #qrCodeDiv { margin: 20px 0; padding: 10px; background: white; border-radius: 8px; }
     #qrReader { width: 100%; max-width: 400px; }
-    
+
+    /* WICHTIG: min-height erzwingen, sonst sieht die Library keinen Platz */
+    #qrReader { 
+        width: 100%; 
+        min-height: 300px; 
+        background: #000; 
+        border-radius: 8px;
+        overflow: hidden;
+    }
 </style>
 </head>
 <body>
@@ -1377,14 +1385,22 @@ function switchTab(tab) {
         }
     };
 
-// --- QR CODE ---
-    let html5QrCode;
+
+// --- QR CODE FIX ---
+    let html5QrCode = null;
 
     function toggleQrModal(open) {
         document.getElementById('qrModal').classList.toggle('active', open);
-        if(open) showQrTab('gen');
-        else {
-             if(html5QrCode && html5QrCode.isScanning) html5QrCode.stop();
+        
+        if(open) {
+            showQrTab('gen');
+        } else {
+            // Beim Schließen sicher stoppen
+            if(html5QrCode && html5QrCode.isScanning) {
+                html5QrCode.stop().then(() => {
+                    html5QrCode.clear();
+                }).catch(err => console.log("Stop Error", err));
+            }
         }
     }
 
@@ -1394,62 +1410,75 @@ function switchTab(tab) {
         
         if(tab === 'gen') {
             document.getElementById('qrCodeDiv').innerHTML = "";
-            // Config String bauen (ohne localStorage Müll)
+            // JSON stringify der config
             const jsonConf = JSON.stringify(conf);
-            // URL Hash Format bauen
-            const payload = window.location.origin + window.location.pathname + "#config=" + btoa(jsonConf);
+            // Wir nutzen window.location.href um die volle URL inkl. https:// zu bekommen
+            // split('#')[0] entfernt alte Hash-Reste
+            const cleanUrl = window.location.href.split('#')[0];
+            const payload = cleanUrl + "#config=" + btoa(jsonConf);
             
             new QRCode(document.getElementById("qrCodeDiv"), {
                 text: payload,
-                width: 200, height: 200
+                width: 200, height: 200,
+                correctLevel : QRCode.CorrectLevel.L
             });
         } else {
-            startScanner();
+            // Kurze Pause, damit das DOM (CSS display:flex) fertig gerendert ist
+            setTimeout(startScanner, 300);
         }
     }
 
     function startScanner() {
-        if(!html5QrCode) html5QrCode = new Html5Qrcode("qrReader");
-        
-        // Status Update für den User
+        // Aufräumen falls noch eine Instanz läuft
+        if(html5QrCode) {
+            try { html5QrCode.clear(); } catch(e){}
+        }
+
+        html5QrCode = new Html5Qrcode("qrReader");
         document.getElementById('scanStatus').innerText = "Starte Kamera...";
 
+        const config = { 
+            fps: 10, 
+            qrbox: { width: 250, height: 250 },
+            aspectRatio: 1.0 
+        };
+
+        // Versuch: Back Camera
         html5QrCode.start(
             { facingMode: "environment" }, 
-            { fps: 10, qrbox: { width: 250, height: 250 } },
+            config,
             (decodedText, decodedResult) => {
-                // PRÜFUNG: Enthält der Text unsere Config?
+                // SUCCESS
                 if(decodedText.includes("config=")) {
-                    // Scanner sofort stoppen
                     html5QrCode.stop().then(() => {
-                        console.log("Scan erfolgreich:", decodedText);
+                        console.log("Scan:", decodedText);
                         
-                        // HIER IST DER FIX:
-                        // Wir isolieren den Hash-Teil, egal welche URL davor steht
+                        // Hash isolieren (falls URL davor steht)
                         const parts = decodedText.split('#');
                         const hashPart = parts.length > 1 ? '#' + parts[parts.length - 1] : decodedText;
-                        
-                        // Wenn der String direkt mit config= anfängt (ohne #), fügen wir es hinzu
                         const finalHash = hashPart.startsWith('#') ? hashPart : '#' + hashPart;
 
-                        // Auf die EIGENE URL anwenden und neu laden
+                        // Anwenden
                         window.location.hash = finalHash;
                         window.location.reload();
-                    }).catch(err => console.error("Stop failed", err));
+                    });
                 }
             },
             (errorMessage) => {
-                // Parsing Fehler sind normal während des Scannens, ignorieren
+                // Parsing Fehler ignorieren (passiert bei jedem Frame ohne QR)
             }
         ).catch(err => {
-            // DIESER FEHLER IST WICHTIG
             console.error(err);
             document.getElementById('scanStatus').innerHTML = 
-                `<span style="color:var(--danger)">Kamera Fehler!</span><br>
-                 <span style="font-size:11px">Browser blockiert Zugriff.<br>
-                 Läuft die Seite über <b>HTTPS</b>?</span>`;
+                `<div style="color:var(--danger)">Kamera-Fehler</div>
+                 <div style="font-size:11px; margin-top:5px;">
+                 1. Seite muss via HTTPS laufen<br>
+                 2. Browser-Berechtigung prüfen<br>
+                 3. App neu laden
+                 </div>`;
         });
     }
+  
     
     // Tour initialisieren (ganz am Ende starten)
     tour.init();
