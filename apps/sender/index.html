@@ -213,6 +213,16 @@
         border-radius: 8px;
         overflow: hidden;
     }
+    #qrReader { 
+        width: 100%; 
+        min-height: 300px; /* Zwingend nötig für mobilen Chrome */
+        background: #000; 
+        border-radius: 8px;
+        overflow: hidden;
+        position: relative;
+    }
+    /* Versteckt das hässliche "Scan region" overlay der Library, falls es auftaucht */
+    #qrReader__scan_region { display: none !important; }
 </style>
 </head>
 <body>
@@ -317,11 +327,6 @@
             <button class="btn-icon" onclick="saveConf()">Fertig</button>
         </header>
         <button class="btn-primary" style="margin-top:20px; background: #5856d6;" onclick="toggleQrModal(true)">📱 QR Code Setup</button>
-        <!-- PUSH TOGGLE -->
-            <div class="setting-row" id="pushRow">
-                <span style="font-size:17px; font-weight:500">🔔 Benachrichtigungen</span>
-                <button onclick="enablePush()" style="background:var(--accent); color:white; border:none; padding:8px 15px; border-radius:8px; font-weight:bold; cursor:pointer">Aktivieren</button>
-            </div>
         <div class="scroll-area">
             <div class="label-small">Kanal Name (ntfy)</div>
             <input id="confTopic" placeholder="oma_geheim">
@@ -1428,22 +1433,24 @@ function switchTab(tab) {
         }
     }
 
-    function startScanner() {
-        // Aufräumen falls noch eine Instanz läuft
+function startScanner() {
+        // Erstmal aufräumen, falls was läuft
         if(html5QrCode) {
             try { html5QrCode.clear(); } catch(e){}
         }
 
         html5QrCode = new Html5Qrcode("qrReader");
-        document.getElementById('scanStatus').innerText = "Starte Kamera...";
+        
+        const statusEl = document.getElementById('scanStatus');
+        statusEl.innerText = "Starte Kamera...";
+        statusEl.style.color = "var(--text-sub)";
 
+        // Simpler Config ohne Box-Zwang
         const config = { 
             fps: 10, 
-            qrbox: { width: 250, height: 250 },
             aspectRatio: 1.0 
         };
 
-        // Versuch: Back Camera
         html5QrCode.start(
             { facingMode: "environment" }, 
             config,
@@ -1453,7 +1460,7 @@ function switchTab(tab) {
                     html5QrCode.stop().then(() => {
                         console.log("Scan:", decodedText);
                         
-                        // Hash isolieren (falls URL davor steht)
+                        // Hash isolieren
                         const parts = decodedText.split('#');
                         const hashPart = parts.length > 1 ? '#' + parts[parts.length - 1] : decodedText;
                         const finalHash = hashPart.startsWith('#') ? hashPart : '#' + hashPart;
@@ -1461,21 +1468,22 @@ function switchTab(tab) {
                         // Anwenden
                         window.location.hash = finalHash;
                         window.location.reload();
-                    });
+                    }).catch(e => console.error(e));
                 }
             },
             (errorMessage) => {
-                // Parsing Fehler ignorieren (passiert bei jedem Frame ohne QR)
+                // Parsing Fehler ignorieren wir (passiert bei jedem Frame ohne QR)
             }
         ).catch(err => {
-            console.error(err);
-            document.getElementById('scanStatus').innerHTML = 
-                `<div style="color:var(--danger)">Kamera-Fehler</div>
-                 <div style="font-size:11px; margin-top:5px;">
-                 1. Seite muss via HTTPS laufen<br>
-                 2. Browser-Berechtigung prüfen<br>
-                 3. App neu laden
-                 </div>`;
+            console.error("Camera Error:", err);
+            // Fallback Nachricht für den User
+            statusEl.innerHTML = `
+                <div style="color:var(--danger); font-weight:bold">Kamera konnte nicht starten.</div>
+                <div style="margin-top:10px; font-size:12px">
+                    Bitte nutze deine normale Kamera-App und scanne den Code vom anderen Handy ab.<br>
+                    <br>Fehler: ${err}
+                </div>
+            `;
         });
     }
   
