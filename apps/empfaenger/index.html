@@ -184,6 +184,51 @@
         color: #ccc; 
         font-size: 14px;
     }
+/* === NEW MESSAGE OVERLAY === */
+    #newMsgOverlay {
+        display: none; /* Standardmäßig aus */
+        position: fixed; top: 0; left: 0;
+        width: 100vw; height: 100vh;
+        background: rgba(0, 0, 0, 0.85); /* Dunkler Hintergrund, Fokus auf Text */
+        z-index: 2000; /* Über allem (auch über Lightbox) */
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        backdrop-filter: blur(5px); /* Macht den Hintergrund unscharf - sehr modern */
+    }
+
+    .notify-content {
+        text-align: center;
+        animation: float 3s ease-in-out infinite; /* Sanftes Schweben */
+    }
+
+    .notify-icon {
+        font-size: 15vh; /* Riesiges Icon */
+        margin-bottom: 2vh;
+        filter: drop-shadow(0 0 20px rgba(76, 209, 55, 0.6)); /* Grünes Leuchten */
+    }
+
+    .notify-title {
+        font-size: 6vh;
+        font-weight: bold;
+        color: white;
+        margin-bottom: 1vh;
+        font-family: sans-serif;
+    }
+
+    .notify-sub {
+        font-size: 3vh;
+        color: #aaa;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+    }
+
+    @keyframes float {
+        0% { transform: translateY(0px); }
+        50% { transform: translateY(-20px); } /* Sanft hoch und runter */
+        100% { transform: translateY(0px); }
+    }
     
 </style>
 </head>
@@ -193,6 +238,14 @@
     <div id="debugLog"></div>
     <div id="reloadBtn" onclick="location.reload()">↻</div>
 
+   <!-- NEU: NOTIFICATION OVERLAY -->
+    <div id="newMsgOverlay" onclick="dismissNotification()">
+        <div class="notify-content">
+            <div class="notify-icon">📩</div>
+            <div class="notify-title">Neue Nachricht!</div>
+            <div class="notify-sub">Tippen zum Ansehen</div>
+        </div>
+    </div> 
     <!-- SETUP FORMULAR -->
     <div id="setupScreen">
         <h1 style="color:white; margin:0">Einrichtung</h1>
@@ -253,7 +306,7 @@
     <!-- LIGHTBOX OVERLAY -->
     <div id="lightbox" onclick="closeLightbox()">
         <img id="lightboxImg" src="">
-    </div>
+    </div> 
 <script>
 // === 0. MAGIC LINK CHECK ===
     (function checkMagicLink() {
@@ -389,6 +442,7 @@ let config = JSON.parse(localStorage.getItem('oma_conf_v10')) || null;
         if (!silent) {
             updateDisplay(); 
         }
+        checkNewMessage(item.ts);
     }
     
     async function decryptStr(base64Data, password) {
@@ -754,6 +808,50 @@ smartLog(msg);
         lb.style.display = 'none';
         clearTimeout(lightboxTimer); // Timer stoppen, falls manuell geschlossen
     }
+// === NEU: NOTIFICATION LOGIC ===
+    
+    // Cache laden oder erstellen
+    let seenCache = {};
+    try {
+        seenCache = JSON.parse(localStorage.getItem('oma_seen_msgs') || '{}');
+    } catch(e) {}
+
+    // Funktion: Overlay zeigen, wenn Nachricht unbekannt
+    function checkNewMessage(ts) {
+        // Wenn Timestamp noch NICHT im Cache ist -> ALARM!
+        if (!seenCache[ts]) {
+            const overlay = document.getElementById('newMsgOverlay');
+            if (overlay.style.display !== 'flex') {
+                overlay.style.display = 'flex';
+                // Optional: Sound abspielen? 
+                // document.getElementById('pingSound').play(); 
+            }
+        }
+    }
+
+    // Funktion: Wird beim Klick auf das Overlay ausgeführt
+    function dismissNotification() {
+        // 1. Overlay ausblenden
+        document.getElementById('newMsgOverlay').style.display = 'none';
+
+        // 2. Alle aktuell geladenen Nachrichten als "gesehen" markieren
+        const now = Date.now();
+        messages.forEach(m => {
+            seenCache[m.timestamp] = now; // Wir speichern WANN es gesehen wurde
+        });
+
+        // 3. Aufräumen (Pruning > 14 Tage)
+        const FOURTEEN_DAYS = 14 * 24 * 60 * 60 * 1000;
+        for (const [ts, seenTime] of Object.entries(seenCache)) {
+            if (now - seenTime > FOURTEEN_DAYS) {
+                delete seenCache[ts];
+            }
+        }
+
+        // 4. Speichern
+        localStorage.setItem('oma_seen_msgs', JSON.stringify(seenCache));
+    }
+
     
 </script>
 </body>
