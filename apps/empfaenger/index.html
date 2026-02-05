@@ -916,7 +916,7 @@ smartLog(msg);
         applyUi(t, i);
     }
 
-  // 5. Speichern oder Abbrechen
+ // 5. Speichern oder Abbrechen
     function closeUi(save) {
         document.getElementById('uiTweaksModal').style.display = 'none';
         
@@ -928,14 +928,19 @@ smartLog(msg);
             uiConf.zoomTime = parseInt(document.getElementById('numZoomTime').value) || 10;
             localStorage.setItem('oma_ui_settings', JSON.stringify(uiConf));
 
-            // B) Device ID speichern (NEU)
+            // B) Device ID speichern (MODIFIZIERT FÜR LEERE ID)
             const newId = document.getElementById('inputDeviceId').value.trim();
-            if (newId && newId !== config.deviceId) {
+            
+            // Wir vergleichen mit dem aktuellen Wert (oder leeren String, falls undefined)
+            const currentId = config.deviceId || "";
+
+            // Check: Ist der neue Wert anders als der alte?
+            // Wir erlauben jetzt explizit auch einen leeren String ""
+            if (newId !== currentId) {
                 config.deviceId = newId;
-                // WICHTIG: In die Haupt-Config speichern!
                 localStorage.setItem('oma_conf_v10', JSON.stringify(config));
                 alert("Geräte-ID gespeichert! App wird neu geladen.");
-                location.reload(); // Reload für sauberen Neustart mit neuer ID
+                location.reload(); 
                 return;
             }
 
