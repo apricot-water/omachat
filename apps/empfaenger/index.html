@@ -613,7 +613,7 @@ let config = JSON.parse(localStorage.getItem('oma_conf_v10')) || null;
     }
 
     
-    function connectNtfy() {
+   function connectNtfy() {
         log(`Live: ${config.ntfyTopic}`);
         const es = new EventSource(`https://ntfy.sh/${config.ntfyTopic}/sse?since=all`);
         
@@ -622,20 +622,26 @@ let config = JSON.parse(localStorage.getItem('oma_conf_v10')) || null;
 
         es.onmessage = async (e) => {
             const data = JSON.parse(e.data);
-            const msgTimestamp = data.time; // Zeitstempel der Nachricht
+            const msgTimestamp = data.time;
 
             if (data.event === 'message') {
                 
-                // 1. LOGS IGNORIEREN
                 if (data.message === "LOG_ENTRY") return; 
 
-                // 2. ADMIN COMMANDS CHECK
+                // === ADMIN COMMANDS ===
                 try {
                     const cmdData = JSON.parse(data.message);
                     
-                    // --- SPEZIALFALL: DELETE ---
-                    // Delete darf immer laufen (idempotent), da es Nachrichten entfernt.
-                    // Auch alte Delete-Befehle sind wichtig, um den Cache aufzuräumen.
+                    // 1. TARGET CHECK (Bin ich gemeint?)
+                    const myId = config.deviceId || "unbekannt";
+                    const target = cmdData.target || "ALL"; // Default: Alle
+                    
+                    // Wenn Target NICHT "ALL" ist UND NICHT meine ID -> Ignorieren
+                    if (target !== "ALL" && target !== myId) {
+                        return; 
+                    }
+
+                    // 2. DELETE (Immer erlaubt, global)
                     if (cmdData.cmd === 'DELETE' && cmdData.ts) {
                         log(`CMD: Lösche ${cmdData.ts}`);
                         messages = messages.filter(m => m.timestamp !== cmdData.ts);
@@ -644,64 +650,71 @@ let config = JSON.parse(localStorage.getItem('oma_conf_v10')) || null;
                         return; 
                     }
 
-                    // --- ALLE ANDEREN BEFEHLE (RELOAD, CONFIG, ETC.) ---
-                    // Diese dürfen pro Zeitstempel NUR EINMAL ausgeführt werden.
-                    if (['RELOAD', 'TRIGGER_NEW', 'SET_FONTSIZE', 'CONFIG_NIGHT'].includes(cmdData.cmd)) {
-                        
-                        // Letzten bekannten Befehls-Zeitstempel laden
-                        const lastCmdTs = parseInt(localStorage.getItem('oma_last_cmd_ts') || '0');
+                    // 3. SYSTEM BEFEHLE (Nur einmal pro Timestamp!)
+                    const lastCmdTs = parseInt(localStorage.getItem('oma_last_cmd_ts') || '0');
+                    if (msgTimestamp <= lastCmdTs) return; // Schon erledigt
 
-                        // Wenn Befehl alt oder bekannt -> IGNORIEREN
-                        if (msgTimestamp <= lastCmdTs) {
-                            // console.log("Alter Befehl ignoriert:", cmdData.cmd);
-                            return;
-                        }
+                    // Merken, dass wir diesen Befehl ausgeführt haben
+                    localStorage.setItem('oma_last_cmd_ts', msgTimestamp);
 
-                        // Neuer Befehl -> Zeit merken!
-                        localStorage.setItem('oma_last_cmd_ts', msgTimestamp);
-
-                        // --- A: RELOAD ---
-                        if (cmdData.cmd === 'RELOAD') {
-                            log("CMD: Remote Reload!");
-                            location.reload();
-                            return;
-                        }
-
-                        // --- B: TRIGGER ALARM ---
-                        if (cmdData.cmd === 'TRIGGER_NEW') {
-                            log("CMD: Trigger Alarm!");
-                            if(messages.length > 0) {
-                                currentIndex = messages.length - 1;
-                                updateDisplay();
-                            }
-                            document.getElementById('newMsgOverlay').style.display = 'flex';
-                            return;
-                        }
-
-                        // --- C: SCHRIFTGRÖSSE ---
-                        if (cmdData.cmd === 'SET_FONTSIZE') {
-                            const size = parseFloat(cmdData.val);
-                            if(size) {
-                                log(`CMD: Schrift auf ${size}`);
-                                uiConf.textSize = size;
-                                localStorage.setItem('oma_ui_settings', JSON.stringify(uiConf));
-                                applyUi(uiConf.textSize, uiConf.imgSize);
-                            }
-                            return;
-                        }
-
-                        // --- D: NACHTMODUS ---
-                        if (cmdData.cmd === 'CONFIG_NIGHT') {
-                            log(`CMD: Nacht ${cmdData.start}-${cmdData.end}`);
-                            uiConf.nightStart = cmdData.start;
-                            uiConf.nightEnd = cmdData.end;
-                            localStorage.setItem('oma_ui_settings', JSON.stringify(uiConf));
-                            checkNightMode(); 
-                            return;
-                        }
+                    // --- PING (Status senden) ---
+                    if (cmdData.cmd === 'PING') {
+                        // Antwortet asynchron in die devices.json
+                        registerSelfOnGitHub();
+                        return;
                     }
 
-                } catch(err) { /* Kein JSON-Command */ }
+                    // --- RENAME (Umbenennen) ---
+                    if (cmdData.cmd === 'RENAME_DEVICE') {
+                        if (target === "ALL") return; // Sicherheits-Check
+                        if (cmdData.newId) {
+                            config.deviceId = cmdData.newId;
+                            localStorage.setItem('oma_conf_v10', JSON.stringify(config));
+                            log(`Gerät umbenannt zu: ${cmdData.newId}`);
+                            setTimeout(() => location.reload(), 2000);
+                        }
+                        return;
+                    }
+
+                    // --- RELOAD ---
+                    if (cmdData.cmd === 'RELOAD') {
+                        log("CMD: Reload");
+                        location.reload();
+                        return;
+                    }
+
+                    // --- TRIGGER ALARM ---
+                    if (cmdData.cmd === 'TRIGGER_NEW') {
+                        log("CMD: Alarm");
+                        if(messages.length > 0) {
+                            currentIndex = messages.length - 1;
+                            updateDisplay();
+                        }
+                        document.getElementById('newMsgOverlay').style.display = 'flex';
+                        return;
+                    }
+
+                    // --- SCHRIFT ---
+                    if (cmdData.cmd === 'SET_FONTSIZE') {
+                        const size = parseFloat(cmdData.val);
+                        if(size) {
+                            uiConf.textSize = size;
+                            localStorage.setItem('oma_ui_settings', JSON.stringify(uiConf));
+                            applyUi(uiConf.textSize, uiConf.imgSize);
+                        }
+                        return;
+                    }
+
+                    // --- NACHTMODUS ---
+                    if (cmdData.cmd === 'CONFIG_NIGHT') {
+                        uiConf.nightStart = cmdData.start;
+                        uiConf.nightEnd = cmdData.end;
+                        localStorage.setItem('oma_ui_settings', JSON.stringify(uiConf));
+                        checkNightMode(); 
+                        return;
+                    }
+
+                } catch(err) { /* Kein JSON-Command -> Normale Nachricht */ }
 
                 // === 3. NORMALE NACHRICHT ===
                 let encPayload = data.attachment ? data.title : data.message;
@@ -716,6 +729,7 @@ let config = JSON.parse(localStorage.getItem('oma_conf_v10')) || null;
             }
         };
     }
+    
 function updateDisplay() {
         if(messages.length === 0) {
             document.getElementById('messageText').innerText = "Warte auf Nachrichten...";
@@ -965,6 +979,81 @@ smartLog(msg);
 
         // 4. Speichern
         localStorage.setItem('oma_seen_msgs', JSON.stringify(seenCache));
+    }
+
+    // === DEVICE REGISTRATION (PING ANTWORT) ===
+    async function registerSelfOnGitHub() {
+        if(!config.ghUser || !config.ghToken) return;
+
+        log("PING empfangen! Registriere...");
+        
+        // 1. Zufällige Wartezeit (0-10s) gegen Kollisionen bei "PING ALL"
+        const delay = Math.floor(Math.random() * 10000);
+        await new Promise(r => setTimeout(r, delay));
+
+        try {
+            const myId = config.deviceId || "unbekannt";
+            
+            // 2. Aktuelle Liste laden
+            const url = `https://api.github.com/repos/${config.ghUser}/${config.ghRepo}/contents/devices.json`;
+            const header = { 'Authorization': `Bearer ${config.ghToken}`, 'Accept': 'application/vnd.github.v3+json' };
+            
+            let devices = [];
+            let sha = null;
+
+            const resp = await fetch(url, { headers: header, cache: "no-store" });
+            
+            if(resp.ok) {
+                const fileData = await resp.json();
+                sha = fileData.sha;
+                // Sauberes Decoding
+                const rawContent = fileData.content.replace(/\s/g, '');
+                try {
+                    devices = JSON.parse(decodeURIComponent(escape(atob(rawContent))));
+                } catch(e){}
+            } 
+
+            // 3. Akku Status holen (falls möglich)
+            let batt = "?";
+            try {
+                const b = await navigator.getBattery();
+                batt = Math.round(b.level * 100);
+            } catch(e){}
+
+            // 4. Liste updaten
+            const now = Math.floor(Date.now() / 1000);
+            const myEntry = {
+                id: myId,
+                lastSeen: now,
+                battery: batt,
+                userAgent: navigator.userAgent
+            };
+
+            // Prüfen ob ID schon existiert -> Überschreiben, sonst Hinzufügen
+            const idx = devices.findIndex(d => d.id === myId);
+            if(idx >= 0) devices[idx] = myEntry;
+            else devices.push(myEntry);
+
+            // 5. Hochladen
+            const newContent = btoa(unescape(encodeURIComponent(JSON.stringify(devices, null, 2))));
+            const body = {
+                message: `Device Update: ${myId}`,
+                content: newContent
+            };
+            if(sha) body.sha = sha;
+
+            await fetch(url, {
+                method: 'PUT',
+                headers: { 'Authorization': `Bearer ${config.ghToken}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+
+            log("Geräteliste aktualisiert ✅");
+
+        } catch(e) {
+            console.error(e);
+            // Log nur lokal, um Loop zu vermeiden
+        }
     }
 
     
