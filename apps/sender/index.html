@@ -261,7 +261,9 @@
     <div class="sidebar">
         <div style="padding: 0 20px 20px 20px; font-weight:bold; font-size:20px; color:var(--text-sub)">Menü</div>
         <div class="menu-item active" onclick="switchTab('send')">✍️ Schreiben</div>
-        <div class="menu-item" onclick="switchTab('view')">🛠️Nachrichten bearbeiten</div>
+        <div class="menu-item" onclick="switchTab('view')">🛠️ Nachrichten bearbeiten</div>
+        <!-- NEU: Fernsteuerung -->
+        <div class="menu-item" onclick="switchTab('admin')">🎮 Fernsteuerung</div>
         <div class="menu-item" onclick="switchTab('log')">📊 Aktivitäten Log</div>
         <div style="flex:1"></div>
         <div class="menu-item" style="font-size:14px; color:var(--text-sub)" onclick="toggleDarkMode()">🌙 Dark Mode umschalten</div>
@@ -319,6 +321,46 @@
         </div>
     </div>
 
+    <!-- TAB: FERNSTEUERUNG -->
+    <div id="tab-admin" class="tab-content">
+        <div class="scroll-area">
+            
+            <div style="background:var(--input-bg); padding:15px; border-radius:12px; margin-bottom:20px;">
+                <div class="label-small" style="margin-left:0; margin-bottom:10px;">🚨 Notfall & System</div>
+                <div style="display:flex; gap:10px;">
+                    <button class="btn-primary" style="background:var(--danger); flex:1;" onclick="sendCmd('RELOAD')">Neustart (Reload)</button>
+                    <button class="btn-primary" style="background:#ff9500; flex:1;" onclick="sendCmd('TRIGGER_NEW')">Alarm / Wecken</button>
+                </div>
+                <div style="font-size:11px; color:var(--text-sub); margin-top:8px;">
+                    "Neustart" lädt die Seite neu. "Alarm" zeigt das "Neue Nachricht"-Overlay.
+                </div>
+            </div>
+
+            <div style="background:var(--input-bg); padding:15px; border-radius:12px; margin-bottom:20px;">
+                <div class="label-small" style="margin-left:0;">Schriftgröße (vh)</div>
+                <div style="display:flex; gap:10px; align-items:center; margin-top:5px;">
+                    <input type="number" id="cmdFontSize" value="4" step="0.5" style="background:var(--bg-card); width:80px; text-align:center;">
+                    <button class="btn-primary" onclick="sendCmd('FONT')" style="flex:1;">Setzen</button>
+                </div>
+            </div>
+
+            <div style="background:var(--input-bg); padding:15px; border-radius:12px; margin-bottom:20px;">
+                <div class="label-small" style="margin-left:0;">🌙 Nachtmodus (Stunden)</div>
+                <div style="display:flex; gap:10px; align-items:center; margin-top:5px;">
+                    <div style="flex:1">
+                        <div style="font-size:10px; color:var(--text-sub); margin-bottom:2px;">Start (Uhr)</div>
+                        <input type="number" id="cmdNightStart" value="22" min="0" max="23" style="background:var(--bg-card); text-align:center;">
+                    </div>
+                    <div style="flex:1">
+                        <div style="font-size:10px; color:var(--text-sub); margin-bottom:2px;">Ende (Uhr)</div>
+                        <input type="number" id="cmdNightEnd" value="8" min="0" max="23" style="background:var(--bg-card); text-align:center;">
+                    </div>
+                </div>
+                <button class="btn-primary" onclick="sendCmd('NIGHT')" style="margin-top:10px;">Zeiten speichern</button>
+            </div>
+
+        </div>
+    </div>
     
     <!-- SETTINGS -->
     <div id="settingsModal">
@@ -765,6 +807,10 @@ function switchTab(tab) {
         if(event && event.currentTarget) event.currentTarget.classList.add('active'); 
         toggleSidebar(false);
 
+       // In der switchTab Funktion hinzufügen:
+        if(tab === 'admin') {
+        document.getElementById('pageTitle').innerText = "Fernsteuerung";
+        }
         if(tab === 'send') document.getElementById('pageTitle').innerText = "Nachricht schreiben";
         
         if(tab === 'view') {
@@ -1486,7 +1532,46 @@ function startScanner() {
             `;
         });
     }
-  
+    // === REMOTE CONTROL LOGIC ===
+    async function sendCmd(type) {
+        if(!conf.t) return alert("Kein Kanal konfiguriert.");
+        
+        let payload = {};
+
+        // 1. Payload bauen
+        if(type === 'RELOAD') {
+            if(!confirm("Tablet wirklich neu laden?")) return;
+            payload = { cmd: "RELOAD" };
+        }
+        else if(type === 'TRIGGER_NEW') {
+            payload = { cmd: "TRIGGER_NEW" };
+        }
+        else if(type === 'FONT') {
+            const val = document.getElementById('cmdFontSize').value;
+            payload = { cmd: "SET_FONTSIZE", val: val };
+        }
+        else if(type === 'NIGHT') {
+            const s = document.getElementById('cmdNightStart').value;
+            const e = document.getElementById('cmdNightEnd').value;
+            payload = { cmd: "CONFIG_NIGHT", start: s, end: e };
+        }
+
+        // 2. Senden (UNVERSCHLÜSSELT als Raw JSON Body)
+        // Das muss so sein, damit der Empfänger es im 'try { JSON.parse }' Block erkennt.
+        try {
+            await fetch(`https://ntfy.sh/${conf.t}`, {
+                method: 'POST',
+                body: JSON.stringify(payload),
+                headers: {
+                    'Title': 'ADMIN_CMD', // Optional, für Übersichtlichkeit
+                    'Priority': 'high'
+                }
+            });
+            showToast("Befehl gesendet! 📡");
+        } catch(e) {
+            alert("Fehler: " + e.message);
+        }
+    }  
     
     // Tour initialisieren (ganz am Ende starten)
     tour.init();
