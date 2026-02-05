@@ -327,6 +327,7 @@
     </div> 
 <script>
 // === 0. MAGIC LINK CHECK ===
+  // === 0. MAGIC LINK CHECK (MIT ÜBERSCHREIB-SCHUTZ) ===
     (function checkMagicLink() {
         const hash = window.location.hash;
         if (hash.startsWith('#config=')) {
@@ -334,24 +335,46 @@
                 const b64 = hash.substring(8);
                 const json = JSON.parse(atob(b64));
                 
+                // Wir laden zuerst die existierende Config, um die ID zu retten
+                let existingConf = {};
+                try { 
+                    existingConf = JSON.parse(localStorage.getItem('oma_conf_v10') || '{}'); 
+                } catch(e) {}
+
+                // LOGIK: Nimm die ID aus dem Link nur, wenn da wirklich eine drin steht.
+                // Sonst behalte die ID, die wir schon lokal haben (durch Umbenennung).
+                const finalDeviceId = json.did || existingConf.deviceId;
+
                 const newConf = {
                     ghUser: json.gu,
                     ghRepo: json.gr,
                     ghToken: json.gt,
                     ntfyTopic: json.t,
                     pass: json.p,
-                    deviceId: json.did // <--- NEU: Device ID (optional)
+                    deviceId: finalDeviceId // <--- HIER IST DER FIX
                 };
 
                 if(newConf.ghUser && newConf.ntfyTopic && newConf.pass) {
                     localStorage.setItem('oma_conf_v10', JSON.stringify(newConf));
+                    
+                    // URL säubern, damit beim nächsten Reload nicht wieder importiert wird
+                    // (Wichtig, falls man die Seite ohne Hash neu lädt)
                     history.replaceState(null, null, window.location.pathname);
-                    location.reload();
-                } else { alert("Link unvollständig."); }
-            } catch (e) { console.error("Link Error", e); alert("Link fehlerhaft."); }
+                    
+                    // Wir laden NICHT neu, wenn wir eh schon da sind, um Loops zu vermeiden,
+                    // aber initialisieren alles neu.
+                    if (existingConf.ntfyTopic !== newConf.ntfyTopic) {
+                        location.reload(); 
+                    }
+                } else { 
+                    alert("Link unvollständig."); 
+                }
+            } catch (e) { 
+                console.error("Link Error", e); 
+                alert("Link fehlerhaft."); 
+            }
         }
     })();
-
     // === 1. BASIC UTILS ===
     function log(msg) { console.log(msg); const d=document.getElementById('debugLog'); if(d) d.innerHTML=`> ${msg}<br>`+d.innerHTML; }
     function toggleDebug() { const d=document.getElementById('debugLog'); d.style.display=d.style.display==='none'?'block':'none'; }
