@@ -612,7 +612,7 @@ let config = JSON.parse(localStorage.getItem('oma_conf_v10')) || null;
         } catch(e) { log("GitHub Fehler: " + e.message); }
     }
 
-    function connectNtfy() {
+function connectNtfy() {
         log(`Live: ${config.ntfyTopic}`);
         const es = new EventSource(`https://ntfy.sh/${config.ntfyTopic}/sse?since=all`);
         
@@ -625,23 +625,62 @@ let config = JSON.parse(localStorage.getItem('oma_conf_v10')) || null;
             if (data.event === 'message') {
                 
                 // === 1. LOGS IGNORIEREN ===
-                // Wenn die Nachricht "LOG_ENTRY" ist, tun wir nichts.
-                // Das ist nur für den Admin/Python-Script relevant.
                 if (data.message === "LOG_ENTRY") {
                     return; 
                 }
 
-                // === 2. DELETE CHECK (LIVE) ===
+                // === 2. ADMIN COMMANDS CHECK (LIVE) ===
                 try {
                     const cmdData = JSON.parse(data.message);
+                    
+                    // A: LÖSCHEN
                     if (cmdData.cmd === 'DELETE' && cmdData.ts) {
-                        log(`Lösche live: ${cmdData.ts}`);
+                        log(`CMD: Lösche ${cmdData.ts}`);
                         messages = messages.filter(m => m.timestamp !== cmdData.ts);
                         if (currentIndex >= messages.length) currentIndex = Math.max(0, messages.length - 1);
                         updateDisplay();
                         return; 
                     }
-                } catch(err) { /* Kein JSON-Command */ }
+
+                    // B: RELOAD (Neustart)
+                    if (cmdData.cmd === 'RELOAD') {
+                        location.reload();
+                        return;
+                    }
+
+                    // C: TRIGGER ALARM
+                    if (cmdData.cmd === 'TRIGGER_NEW') {
+                        // Springe zum Ende & zeige Overlay
+                        if(messages.length > 0) {
+                            currentIndex = messages.length - 1;
+                            updateDisplay();
+                        }
+                        document.getElementById('newMsgOverlay').style.display = 'flex';
+                        return;
+                    }
+
+                    // D: SCHRIFTGRÖSSE
+                    if (cmdData.cmd === 'SET_FONTSIZE') {
+                        const size = parseFloat(cmdData.val);
+                        if(size) {
+                            uiConf.textSize = size;
+                            localStorage.setItem('oma_ui_settings', JSON.stringify(uiConf));
+                            applyUi(uiConf.textSize, uiConf.imgSize);
+                        }
+                        return;
+                    }
+
+                    // E: NACHTMODUS KONFIG (String-basiert)
+                    if (cmdData.cmd === 'CONFIG_NIGHT') {
+                        log(`CMD: Nacht ${cmdData.start}-${cmdData.end}`);
+                        uiConf.nightStart = cmdData.start; // String "22:30"
+                        uiConf.nightEnd = cmdData.end;     // String "08:00"
+                        localStorage.setItem('oma_ui_settings', JSON.stringify(uiConf));
+                        checkNightMode(); 
+                        return;
+                    }
+
+                } catch(err) { /* Kein JSON-Command, also normale Nachricht */ }
 
                 // === 3. NORMALE NACHRICHT ===
                 let encPayload = data.attachment ? data.title : data.message;
@@ -657,7 +696,6 @@ let config = JSON.parse(localStorage.getItem('oma_conf_v10')) || null;
         };
     }
     
-
 function updateDisplay() {
         if(messages.length === 0) {
             document.getElementById('messageText').innerText = "Warte auf Nachrichten...";
