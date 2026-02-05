@@ -308,7 +308,12 @@
         <label>Anzeigedauer (Sekunden):</label>
         <input type="number" id="numZoomTime" min="3" max="60" style="width:60px; padding:5px; text-align:center;">
     </div>
-
+<!-- NEU: Device ID Editor -->
+        <div style="border-top: 1px solid #444; margin: 15px 0; padding-top: 10px;">
+            <label style="display:block; margin-bottom:5px; color:var(--accent);">Geräte-ID (Name):</label>
+            <input type="text" id="inputDeviceId" placeholder="z.B. oma-wohnzimmer" 
+                   style="width:100%; background:#333; color:white; border:1px solid #555; padding:8px; border-radius:5px;">
+        </div>
     <!-- DANACH kommen deine Buttons (Abbruch/Speichern) -->
         
         <div style="display:flex; gap:10px; margin-top:20px; width:100%;">
@@ -860,7 +865,7 @@ smartLog(msg);
         }
     }
 
-    // 3. Menü öffnen & Werte setzen
+ // 3. Menü öffnen & Werte setzen
     function openUiSettings() {
         document.getElementById('uiTweaksModal').style.display = 'flex';
         
@@ -870,9 +875,13 @@ smartLog(msg);
         document.getElementById('valText').innerText = uiConf.textSize;
         document.getElementById('valImg').innerText = uiConf.imgSize;
 
-        // NEU: Zoom Einstellungen laden
+        // Zoom Einstellungen
         document.getElementById('checkZoom').checked = uiConf.zoomActive;
         document.getElementById('numZoomTime').value = uiConf.zoomTime || 10;
+
+        // NEU: Device ID laden
+        // Wir holen sie direkt aus der globalen config
+        document.getElementById('inputDeviceId').value = config.deviceId || "";
     }
 
     // 4. Live Vorschau beim Schieben (Slider)
@@ -884,19 +893,30 @@ smartLog(msg);
         applyUi(t, i);
     }
 
-    // 5. Speichern oder Abbrechen
+  // 5. Speichern oder Abbrechen
     function closeUi(save) {
         document.getElementById('uiTweaksModal').style.display = 'none';
+        
         if(save) {
+            // A) UI Settings speichern
             uiConf.textSize = document.getElementById('rangeText').value;
             uiConf.imgSize = document.getElementById('rangeImg').value;
-            
-            // NEU: Zoom Werte speichern
             uiConf.zoomActive = document.getElementById('checkZoom').checked;
             uiConf.zoomTime = parseInt(document.getElementById('numZoomTime').value) || 10;
-
             localStorage.setItem('oma_ui_settings', JSON.stringify(uiConf));
-            alert("Gespeichert!");
+
+            // B) Device ID speichern (NEU)
+            const newId = document.getElementById('inputDeviceId').value.trim();
+            if (newId && newId !== config.deviceId) {
+                config.deviceId = newId;
+                // WICHTIG: In die Haupt-Config speichern!
+                localStorage.setItem('oma_conf_v10', JSON.stringify(config));
+                alert("Geräte-ID gespeichert! App wird neu geladen.");
+                location.reload(); // Reload für sauberen Neustart mit neuer ID
+                return;
+            }
+
+            alert("Einstellungen gespeichert!");
         } else {
             // Reset auf alte Werte bei Abbruch
             applyUi(uiConf.textSize, uiConf.imgSize);
