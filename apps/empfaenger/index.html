@@ -229,11 +229,24 @@
         50% { transform: translateY(-20px); } /* Sanft hoch und runter */
         100% { transform: translateY(0px); }
     }
+
+    /* === NIGHT MODE === */
+    #nightOverlay {
+        display: none;
+        position: fixed; top: 0; left: 0;
+        width: 100vw; height: 100vh;
+        background: rgba(0, 0, 0, 0.85); /* 85% Dunkelheit */
+        z-index: 1500; /* Unter dem NewMessage Overlay (2000), aber über allem anderen */
+        pointer-events: none; /* WICHTIG: Man kann "durchklicken" */
+        transition: opacity 2s ease;
+    }
     
 </style>
 </head>
 <body>
-
+<!-- NEU: NIGHT MODE OVERLAY -->
+    <div id="nightOverlay"></div>
+    
     <div id="statusLight" onclick="handleSecretClick()"></div>
     <div id="debugLog"></div>
     <div id="reloadBtn" onclick="location.reload()">↻</div>
@@ -697,24 +710,55 @@ smartLog(msg);
 
 // === UI TWEAKS LOGIC & LIGHTBOX ===
 
-    // Standards erweitert: zoomActive = false, zoomTime = 10 Sekunden
-    let uiConf = { textSize: 4, imgSize: 50, zoomActive: false, zoomTime: 10 }; 
+// Standards erweitert: Night Mode (22 bis 8 Uhr standard)
+    let uiConf = { 
+        textSize: 4, 
+        imgSize: 50, 
+        zoomActive: false, 
+        zoomTime: 10,
+        nightStart: 22, // Start Stunde (22:00)
+        nightEnd: 8     // Ende Stunde (08:00)
+    }; 
+    
     let clickCnt = 0;
     let clickTimer = null;
-    let lightboxTimer = null; // Timer Variable für Auto-Close
+    let lightboxTimer = null;
 
     // 1. Beim Start laden
     (function initUi() {
         try {
             const saved = JSON.parse(localStorage.getItem('oma_ui_settings'));
-            if(saved) {
-                // Merge falls alte Config ohne Zoom-Werte war
-                uiConf = { ...uiConf, ...saved };
-            }
+            if(saved) { uiConf = { ...uiConf, ...saved }; }
         } catch(e){}
+        
         applyUi(uiConf.textSize, uiConf.imgSize);
+        
+        // Nachtmodus Check starten (jede Minute prüfen)
+        checkNightMode();
+        setInterval(checkNightMode, 60000); 
     })();
 
+    // NEU: Nachtmodus Logik
+    function checkNightMode() {
+        const hour = new Date().getHours();
+        const overlay = document.getElementById('nightOverlay');
+        
+        let isNight = false;
+        if (uiConf.nightStart > uiConf.nightEnd) {
+            // Beispiel: 22 bis 8 (Übergang Mitternacht)
+            if (hour >= uiConf.nightStart || hour < uiConf.nightEnd) isNight = true;
+        } else {
+            // Beispiel: 1 bis 5 (Gleicher Tag)
+            if (hour >= uiConf.nightStart && hour < uiConf.nightEnd) isNight = true;
+        }
+
+        if (isNight) {
+            overlay.style.display = 'block';
+        } else {
+            overlay.style.display = 'none';
+        }
+    }
+    
     // 2. Secret Click Handler (5x klicken)
     function handleSecretClick() {
         clickCnt++;
