@@ -709,15 +709,14 @@ smartLog(msg);
     if(!window.isSecureContext) alert("Achtung: HTTPS erforderlich für Verschlüsselung!");
 
 // === UI TWEAKS LOGIC & LIGHTBOX ===
-
-// Standards erweitert: Night Mode (22 bis 8 Uhr standard)
+// Standards erweitert: Night Mode als String Zeit (HH:MM)
     let uiConf = { 
         textSize: 4, 
         imgSize: 50, 
         zoomActive: false, 
         zoomTime: 10,
-        nightStart: 22, // Start Stunde (22:00)
-        nightEnd: 8     // Ende Stunde (08:00)
+        nightStart: "22:00", 
+        nightEnd: "08:00"
     }; 
     
     let clickCnt = 0;
@@ -733,29 +732,43 @@ smartLog(msg);
         
         applyUi(uiConf.textSize, uiConf.imgSize);
         
-        // Nachtmodus Check starten (jede Minute prüfen)
+        // Nachtmodus Check starten (alle 10 Sekunden)
         checkNightMode();
-        setInterval(checkNightMode, 60000); 
+        setInterval(checkNightMode, 10000); 
     })();
 
-    // NEU: Nachtmodus Logik
+    // Hilfsfunktion: Zeitstring "22:30" in Tagesminuten (1350) umwandeln
+    function getMins(timeStr) {
+        if (typeof timeStr === 'number') return timeStr * 60; // Fallback für alte Config
+        if (!timeStr) return 0;
+        const parts = timeStr.split(':');
+        return (parseInt(parts[0]) * 60) + parseInt(parts[1]);
+    }
+
+    // NEU: Nachtmodus Logik (Minuten-Genau)
     function checkNightMode() {
-        const hour = new Date().getHours();
-        const overlay = document.getElementById('nightOverlay');
+        const now = new Date();
+        const curMins = (now.getHours() * 60) + now.getMinutes();
         
+        const startMins = getMins(uiConf.nightStart);
+        const endMins = getMins(uiConf.nightEnd);
+        
+        const overlay = document.getElementById('nightOverlay');
         let isNight = false;
-        if (uiConf.nightStart > uiConf.nightEnd) {
-            // Beispiel: 22 bis 8 (Übergang Mitternacht)
-            if (hour >= uiConf.nightStart || hour < uiConf.nightEnd) isNight = true;
+
+        if (startMins > endMins) {
+            // Beispiel: 22:30 bis 06:15 (Geht über Mitternacht)
+            // Nacht ist, wenn wir NACH Start sind ODER VOR Ende
+            if (curMins >= startMins || curMins < endMins) isNight = true;
         } else {
-            // Beispiel: 1 bis 5 (Gleicher Tag)
-            if (hour >= uiConf.nightStart && hour < uiConf.nightEnd) isNight = true;
+            // Beispiel: 13:00 bis 15:00 (Gleicher Tag)
+            if (curMins >= startMins && curMins < endMins) isNight = true;
         }
 
         if (isNight) {
-            overlay.style.display = 'block';
+            if(overlay.style.display !== 'block') overlay.style.display = 'block';
         } else {
-            overlay.style.display = 'none';
+            if(overlay.style.display !== 'none') overlay.style.display = 'none';
         }
     }
     
