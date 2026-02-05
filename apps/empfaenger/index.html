@@ -612,7 +612,8 @@ let config = JSON.parse(localStorage.getItem('oma_conf_v10')) || null;
         } catch(e) { log("GitHub Fehler: " + e.message); }
     }
 
-function connectNtfy() {
+    
+    function connectNtfy() {
         log(`Live: ${config.ntfyTopic}`);
         const es = new EventSource(`https://ntfy.sh/${config.ntfyTopic}/sse?since=all`);
         
@@ -621,19 +622,20 @@ function connectNtfy() {
 
         es.onmessage = async (e) => {
             const data = JSON.parse(e.data);
-            
+            const msgTimestamp = data.time; // Zeitstempel der Nachricht
+
             if (data.event === 'message') {
                 
-                // === 1. LOGS IGNORIEREN ===
-                if (data.message === "LOG_ENTRY") {
-                    return; 
-                }
+                // 1. LOGS IGNORIEREN
+                if (data.message === "LOG_ENTRY") return; 
 
-                // === 2. ADMIN COMMANDS CHECK (LIVE) ===
+                // 2. ADMIN COMMANDS CHECK
                 try {
                     const cmdData = JSON.parse(data.message);
                     
-                    // A: LÖSCHEN
+                    // --- SPEZIALFALL: DELETE ---
+                    // Delete darf immer laufen (idempotent), da es Nachrichten entfernt.
+                    // Auch alte Delete-Befehle sind wichtig, um den Cache aufzuräumen.
                     if (cmdData.cmd === 'DELETE' && cmdData.ts) {
                         log(`CMD: Lösche ${cmdData.ts}`);
                         messages = messages.filter(m => m.timestamp !== cmdData.ts);
@@ -642,45 +644,64 @@ function connectNtfy() {
                         return; 
                     }
 
-                    // B: RELOAD (Neustart)
-                    if (cmdData.cmd === 'RELOAD') {
-                        location.reload();
-                        return;
-                    }
+                    // --- ALLE ANDEREN BEFEHLE (RELOAD, CONFIG, ETC.) ---
+                    // Diese dürfen pro Zeitstempel NUR EINMAL ausgeführt werden.
+                    if (['RELOAD', 'TRIGGER_NEW', 'SET_FONTSIZE', 'CONFIG_NIGHT'].includes(cmdData.cmd)) {
+                        
+                        // Letzten bekannten Befehls-Zeitstempel laden
+                        const lastCmdTs = parseInt(localStorage.getItem('oma_last_cmd_ts') || '0');
 
-                    // C: TRIGGER ALARM
-                    if (cmdData.cmd === 'TRIGGER_NEW') {
-                        // Springe zum Ende & zeige Overlay
-                        if(messages.length > 0) {
-                            currentIndex = messages.length - 1;
-                            updateDisplay();
+                        // Wenn Befehl alt oder bekannt -> IGNORIEREN
+                        if (msgTimestamp <= lastCmdTs) {
+                            // console.log("Alter Befehl ignoriert:", cmdData.cmd);
+                            return;
                         }
-                        document.getElementById('newMsgOverlay').style.display = 'flex';
-                        return;
-                    }
 
-                    // D: SCHRIFTGRÖSSE
-                    if (cmdData.cmd === 'SET_FONTSIZE') {
-                        const size = parseFloat(cmdData.val);
-                        if(size) {
-                            uiConf.textSize = size;
+                        // Neuer Befehl -> Zeit merken!
+                        localStorage.setItem('oma_last_cmd_ts', msgTimestamp);
+
+                        // --- A: RELOAD ---
+                        if (cmdData.cmd === 'RELOAD') {
+                            log("CMD: Remote Reload!");
+                            location.reload();
+                            return;
+                        }
+
+                        // --- B: TRIGGER ALARM ---
+                        if (cmdData.cmd === 'TRIGGER_NEW') {
+                            log("CMD: Trigger Alarm!");
+                            if(messages.length > 0) {
+                                currentIndex = messages.length - 1;
+                                updateDisplay();
+                            }
+                            document.getElementById('newMsgOverlay').style.display = 'flex';
+                            return;
+                        }
+
+                        // --- C: SCHRIFTGRÖSSE ---
+                        if (cmdData.cmd === 'SET_FONTSIZE') {
+                            const size = parseFloat(cmdData.val);
+                            if(size) {
+                                log(`CMD: Schrift auf ${size}`);
+                                uiConf.textSize = size;
+                                localStorage.setItem('oma_ui_settings', JSON.stringify(uiConf));
+                                applyUi(uiConf.textSize, uiConf.imgSize);
+                            }
+                            return;
+                        }
+
+                        // --- D: NACHTMODUS ---
+                        if (cmdData.cmd === 'CONFIG_NIGHT') {
+                            log(`CMD: Nacht ${cmdData.start}-${cmdData.end}`);
+                            uiConf.nightStart = cmdData.start;
+                            uiConf.nightEnd = cmdData.end;
                             localStorage.setItem('oma_ui_settings', JSON.stringify(uiConf));
-                            applyUi(uiConf.textSize, uiConf.imgSize);
+                            checkNightMode(); 
+                            return;
                         }
-                        return;
                     }
 
-                    // E: NACHTMODUS KONFIG (String-basiert)
-                    if (cmdData.cmd === 'CONFIG_NIGHT') {
-                        log(`CMD: Nacht ${cmdData.start}-${cmdData.end}`);
-                        uiConf.nightStart = cmdData.start; // String "22:30"
-                        uiConf.nightEnd = cmdData.end;     // String "08:00"
-                        localStorage.setItem('oma_ui_settings', JSON.stringify(uiConf));
-                        checkNightMode(); 
-                        return;
-                    }
-
-                } catch(err) { /* Kein JSON-Command, also normale Nachricht */ }
+                } catch(err) { /* Kein JSON-Command */ }
 
                 // === 3. NORMALE NACHRICHT ===
                 let encPayload = data.attachment ? data.title : data.message;
@@ -695,7 +716,6 @@ function connectNtfy() {
             }
         };
     }
-    
 function updateDisplay() {
         if(messages.length === 0) {
             document.getElementById('messageText').innerText = "Warte auf Nachrichten...";
