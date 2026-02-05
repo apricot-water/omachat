@@ -344,20 +344,23 @@
                 </div>
             </div>
 
-            <div style="background:var(--input-bg); padding:15px; border-radius:12px; margin-bottom:20px;">
-                <div class="label-small" style="margin-left:0;">🌙 Nachtmodus (Stunden)</div>
+
+<div style="background:var(--input-bg); padding:15px; border-radius:12px; margin-bottom:20px;">
+                <div class="label-small" style="margin-left:0;">🌙 Nachtmodus (Zeitraum)</div>
                 <div style="display:flex; gap:10px; align-items:center; margin-top:5px;">
                     <div style="flex:1">
-                        <div style="font-size:10px; color:var(--text-sub); margin-bottom:2px;">Start (Uhr)</div>
-                        <input type="number" id="cmdNightStart" value="22" min="0" max="23" style="background:var(--bg-card); text-align:center;">
+                        <div style="font-size:10px; color:var(--text-sub); margin-bottom:2px;">Start</div>
+                        <!-- WICHTIG: type="time" für die Handy-Uhr -->
+                        <input type="time" id="cmdNightStart" value="22:00" style="background:var(--bg-card); text-align:center; min-width: 100%; border:none; padding:10px; border-radius:8px;">
                     </div>
                     <div style="flex:1">
-                        <div style="font-size:10px; color:var(--text-sub); margin-bottom:2px;">Ende (Uhr)</div>
-                        <input type="number" id="cmdNightEnd" value="8" min="0" max="23" style="background:var(--bg-card); text-align:center;">
+                        <div style="font-size:10px; color:var(--text-sub); margin-bottom:2px;">Ende</div>
+                        <input type="time" id="cmdNightEnd" value="08:00" style="background:var(--bg-card); text-align:center; min-width: 100%; border:none; padding:10px; border-radius:8px;">
                     </div>
                 </div>
                 <button class="btn-primary" onclick="sendCmd('NIGHT')" style="margin-top:10px;">Zeiten speichern</button>
             </div>
+            
 
         </div>
     </div>
@@ -1532,7 +1535,8 @@ function startScanner() {
             `;
         });
     }
-    // === REMOTE CONTROL LOGIC ===
+
+   // === REMOTE CONTROL LOGIC ===
     async function sendCmd(type) {
         if(!conf.t) return alert("Kein Kanal konfiguriert.");
         
@@ -1551,9 +1555,14 @@ function startScanner() {
             payload = { cmd: "SET_FONTSIZE", val: val };
         }
         else if(type === 'NIGHT') {
-            const s = document.getElementById('cmdNightStart').value;
-            const e = document.getElementById('cmdNightEnd').value;
-            payload = { cmd: "CONFIG_NIGHT", start: s, end: e };
+            // Wir holen den exakten String, z.B. "22:32"
+            const sVal = document.getElementById('cmdNightStart').value; 
+            const eVal = document.getElementById('cmdNightEnd').value;
+            
+            if(!sVal || !eVal) return alert("Bitte Zeiten vollständig ausfüllen!");
+
+            // Wir senden es als String an Oma (Empfänger kümmert sich ums Parsen)
+            payload = { cmd: "CONFIG_NIGHT", start: sVal, end: eVal };
         }
 
         // 2. Senden (UNVERSCHLÜSSELT als Raw JSON Body)
@@ -1563,7 +1572,7 @@ function startScanner() {
                 method: 'POST',
                 body: JSON.stringify(payload),
                 headers: {
-                    'Title': 'ADMIN_CMD', // Optional, für Übersichtlichkeit
+                    'Title': 'ADMIN_CMD', 
                     'Priority': 'high'
                 }
             });
@@ -1571,8 +1580,7 @@ function startScanner() {
         } catch(e) {
             alert("Fehler: " + e.message);
         }
-    }  
-    
+    } 
     // Tour initialisieren (ganz am Ende starten)
     tour.init();
     
