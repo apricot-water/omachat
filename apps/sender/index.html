@@ -324,12 +324,39 @@
     <!-- TAB: FERNSTEUERUNG -->
     <div id="tab-admin" class="tab-content">
         <div class="scroll-area">
+
+<!-- NEU: GERÄTE MANAGEMENT -->
+            <div style="background:var(--input-bg); padding:15px; border-radius:12px; margin-bottom:20px; border: 1px solid var(--accent);">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+                    <div class="label-small" style="margin:0; color:var(--accent);">🎯 Ziel-Gerät</div>
+                    <div style="font-size:11px; color:var(--text-sub); cursor:pointer;" onclick="loadDevicesList()">↻ Liste laden</div>
+                </div>
+                
+                <!-- Dropdown für Target -->
+                <select id="cmdTarget" style="width:100%; background:var(--bg-card); padding:10px; border-radius:8px; border:none; font-weight:bold; font-size:16px;">
+                    <option value="ALL">📡 AN ALLE SENDEN</option>
+                    <!-- Hier werden die Geräte per JS eingefügt -->
+                </select>
+                
+                <div style="margin-top:15px; display:flex; gap:10px;">
+                    <button class="btn-primary" style="flex:1; background:#5856d6;" onclick="sendCmd('PING')">📡 Status Ping</button>
+                </div>
+                
+                <!-- Rename Bereich (ausklappbar oder einfach drunter) -->
+                <div style="margin-top:15px; padding-top:10px; border-top:1px solid rgba(0,0,0,0.1);">
+                    <div class="label-small" style="margin-left:0;">Gerät umbenennen</div>
+                    <div style="display:flex; gap:10px;">
+                        <input id="cmdNewId" placeholder="Neue ID eingeben" style="background:var(--bg-card);">
+                        <button class="btn-primary" style="width:auto;" onclick="sendCmd('RENAME')">Ändern</button>
+                    </div>
+                </div>
+            </div>
             
             <div style="background:var(--input-bg); padding:15px; border-radius:12px; margin-bottom:20px;">
-                <div class="label-small" style="margin-left:0; margin-bottom:10px;">🚨 Notfall & System</div>
+                <div class="label-small" style="margin-left:0; margin-bottom:10px;">🚨System</div>
                 <div style="display:flex; gap:10px;">
                     <button class="btn-primary" style="background:var(--danger); flex:1;" onclick="sendCmd('RELOAD')">Neustart (Reload)</button>
-                    <button class="btn-primary" style="background:#ff9500; flex:1;" onclick="sendCmd('TRIGGER_NEW')">Alarm / Wecken</button>
+                    <button class="btn-primary" style="background:#ff9500; flex:1;" onclick="sendCmd('TRIGGER_NEW')">"Neue Nachricht" anzeigen</button>
                 </div>
                 <div style="font-size:11px; color:var(--text-sub); margin-top:8px;">
                     "Neustart" lädt die Seite neu. "Alarm" zeigt das "Neue Nachricht"-Overlay.
@@ -811,8 +838,9 @@ function switchTab(tab) {
         toggleSidebar(false);
 
        // In der switchTab Funktion hinzufügen:
-        if(tab === 'admin') {
+         if(tab === 'admin') {
         document.getElementById('pageTitle').innerText = "Fernsteuerung";
+        loadDevicesList(); // <--- NEU: Liste laden wenn Tab geöffnet wird
         }
         if(tab === 'send') document.getElementById('pageTitle').innerText = "Nachricht schreiben";
         
@@ -1536,37 +1564,94 @@ function startScanner() {
         });
     }
 
-   // === REMOTE CONTROL LOGIC ===
+    // === DEVICE LISTE LADEN ===
+    async function loadDevicesList() {
+        if(!conf.gu || !conf.gr || !conf.gt) return;
+        
+        const select = document.getElementById('cmdTarget');
+        const currentVal = select.value; // Merken was ausgewählt war
+        
+        // UI Feedback
+        const originalText = select.options[select.selectedIndex]?.text || "Alle";
+        // Wir lassen "ALL" stehen, löschen aber den Rest
+        while (select.options.length > 1) { select.remove(1); }
+
+        try {
+            // devices.json von GitHub laden (Cache Buster!)
+            const url = `https://api.github.com/repos/${conf.gu}/${conf.gr}/contents/devices.json?t=${Date.now()}`;
+            const header = { 'Authorization': `Bearer ${conf.gt}`, 'Accept': 'application/vnd.github.v3+json' };
+            
+            const resp = await fetch(url, { headers: header });
+            if(!resp.ok) throw new Error("Noch keine Geräteliste.");
+            
+            const fileData = await resp.json();
+            // Content decodieren (GitHub API)
+            const content = JSON.parse(decodeURIComponent(escape(atob(fileData.content.replace(/\s/g, '')))));
+            
+            // Dropdown füllen
+            content.forEach(dev => {
+                const date = new Date(dev.lastSeen * 1000);
+                const dateStr = date.toLocaleDateString([], {day:'2-digit', month:'2-digit'}) + " " + date.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+                
+                const opt = document.createElement('option');
+                opt.value = dev.id;
+                // Anzeige: "oma-tablet (85% Akku) - 12.03. 14:00"
+                opt.text = `${dev.id} (${dev.battery || '?'}%) - ${dateStr}`;
+                select.appendChild(opt);
+            });
+
+            // Alten Wert wiederherstellen falls möglich
+            select.value = currentVal;
+
+        } catch(e) {
+            console.log("Devices Load Info:", e.message);
+        }
+    }
+
+   // === REMOTE CONTROL LOGIC (UPDATED) ===
     async function sendCmd(type) {
         if(!conf.t) return alert("Kein Kanal konfiguriert.");
         
-        let payload = {};
+        // Target auslesen (Standard: ALL)
+        const target = document.getElementById('cmdTarget').value;
+        let payload = { target: target }; 
 
         // 1. Payload bauen
         if(type === 'RELOAD') {
-            if(!confirm("Tablet wirklich neu laden?")) return;
-            payload = { cmd: "RELOAD" };
+            if(!confirm(`Befehl "Neustart" an ${target} senden?`)) return;
+            payload.cmd = "RELOAD";
         }
         else if(type === 'TRIGGER_NEW') {
-            payload = { cmd: "TRIGGER_NEW" };
+            payload.cmd = "TRIGGER_NEW";
+        }
+        else if(type === 'PING') {
+            // Ping braucht keine Parameter, nur den Befehl
+            payload.cmd = "PING";
+        }
+        else if(type === 'RENAME') {
+            const newId = document.getElementById('cmdNewId').value.trim();
+            if(!newId) return alert("Bitte neue ID eingeben.");
+            if(target === "ALL") return alert("Sicherheits-Sperre: Du kannst nicht ALLE Geräte gleichzeitig umbenennen!");
+            
+            if(!confirm(`Gerät "${target}" wirklich in "${newId}" umbenennen?`)) return;
+            
+            payload.cmd = "RENAME_DEVICE";
+            payload.newId = newId;
         }
         else if(type === 'FONT') {
-            const val = document.getElementById('cmdFontSize').value;
-            payload = { cmd: "SET_FONTSIZE", val: val };
+            payload.cmd = "SET_FONTSIZE";
+            payload.val = document.getElementById('cmdFontSize').value;
         }
         else if(type === 'NIGHT') {
-            // Wir holen den exakten String, z.B. "22:32"
             const sVal = document.getElementById('cmdNightStart').value; 
             const eVal = document.getElementById('cmdNightEnd').value;
-            
-            if(!sVal || !eVal) return alert("Bitte Zeiten vollständig ausfüllen!");
-
-            // Wir senden es als String an Oma (Empfänger kümmert sich ums Parsen)
-            payload = { cmd: "CONFIG_NIGHT", start: sVal, end: eVal };
+            if(!sVal || !eVal) return alert("Zeiten unvollständig.");
+            payload.cmd = "CONFIG_NIGHT";
+            payload.start = sVal;
+            payload.end = eVal;
         }
 
-        // 2. Senden (UNVERSCHLÜSSELT als Raw JSON Body)
-        // Das muss so sein, damit der Empfänger es im 'try { JSON.parse }' Block erkennt.
+        // 2. Senden
         try {
             await fetch(`https://ntfy.sh/${conf.t}`, {
                 method: 'POST',
@@ -1577,10 +1662,15 @@ function startScanner() {
                 }
             });
             showToast("Befehl gesendet! 📡");
+            
+            // Falls es ein Ping war, Liste kurz danach neu laden (Feedback dauert aber etwas)
+            if(type === 'PING') setTimeout(loadDevicesList, 3000);
+
         } catch(e) {
             alert("Fehler: " + e.message);
         }
-    } 
+    }
+    
     // Tour initialisieren (ganz am Ende starten)
     tour.init();
     
