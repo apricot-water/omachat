@@ -229,7 +229,7 @@
         50% { transform: translateY(-20px); } /* Sanft hoch und runter */
         100% { transform: translateY(0px); }
     }
-
+    
     /* === NIGHT MODE === */
     #nightOverlay {
         display: none;
@@ -240,10 +240,32 @@
         pointer-events: none; /* WICHTIG: Man kann "durchklicken" */
         transition: opacity 2s ease;
     }
-    
+
+    /* === SCREENSAVER === */
+    #screensaverOverlay {
+        display: none;
+        position: fixed; top: 0; left: 0;
+        width: 100vw; height: 100vh;
+        background: #000000; /* Tiefschwarz */
+        z-index: 1800; /* Über NightMode(1500), UNTER NewMsg(2000) */
+        flex-direction: column;
+        align-items: center; 
+        justify-content: center;
+        opacity: 0;
+        transition: opacity 1s ease;
+    }
+    #screensaverOverlay.active {
+        display: flex;
+        opacity: 0.98; /* Fast komplett dunkel, 2% Restlicht damit man merkt es ist an */
+    }
 </style>
 </head>
 <body>
+<!-- NEU: SCREENSAVER OVERLAY -->
+    <div id="screensaverOverlay" onclick="wakeUp()">
+        <div style="color:#333; font-size:12px; margin-top:20px;">Tippen zum Aufwecken</div>
+    </div>
+    
 <!-- NEU: NIGHT MODE OVERLAY -->
     <div id="nightOverlay"></div>
     
@@ -308,6 +330,11 @@
         <label>Anzeigedauer (Sekunden):</label>
         <input type="number" id="numZoomTime" min="3" max="60" style="width:60px; padding:5px; text-align:center;">
     </div>
+       <div class="setting-row">
+        <label>Screensaver nach (Min):</label>
+        <input type="number" id="numSaverTime" min="0" max="120" style="width:60px; padding:5px; text-align:center;">
+    </div>
+    <div style="font-size:10px; color:#666; text-align:right; margin-top:-5px;">(0 = Deaktiviert)</div> 
 <!-- NEU: Device ID Editor -->
         <div style="border-top: 1px solid #444; margin: 15px 0; padding-top: 10px;">
             <label style="display:block; margin-bottom:5px; color:var(--accent);">Geräte-ID (Name):</label>
@@ -809,19 +836,22 @@ smartLog(msg);
     if(!window.isSecureContext) alert("Achtung: HTTPS erforderlich für Verschlüsselung!");
 
 // === UI TWEAKS LOGIC & LIGHTBOX ===
-// Standards erweitert: Night Mode als String Zeit (HH:MM)
+
+    // Standards erweitert: Screensaver (20 Min Standard)
     let uiConf = { 
         textSize: 4, 
         imgSize: 50, 
         zoomActive: false, 
         zoomTime: 10,
         nightStart: "22:00", 
-        nightEnd: "08:00"
+        nightEnd: "08:00",
+        screensaverMin: 20 // NEU: Minuten bis dunkel (0=aus)
     }; 
     
     let clickCnt = 0;
     let clickTimer = null;
     let lightboxTimer = null;
+    let screensaverTimer = null; // Timer Variable für Screensaver
 
     // 1. Beim Start laden
     (function initUi() {
@@ -835,14 +865,53 @@ smartLog(msg);
         // Nachtmodus Check starten (alle 10 Sekunden)
         checkNightMode();
         setInterval(checkNightMode, 10000); 
+
+        // Screensaver starten
+        resetIdleTimer();
+        
+        // Globaler Listener: Bei JEDEM Klick/Touch aufwachen & Timer resetten
+        document.addEventListener('click', resetIdleTimer);
+        document.addEventListener('touchstart', resetIdleTimer);
     })();
 
     // Hilfsfunktion: Zeitstring "22:30" in Tagesminuten (1350) umwandeln
     function getMins(timeStr) {
-        if (typeof timeStr === 'number') return timeStr * 60; // Fallback für alte Config
+        if (typeof timeStr === 'number') return timeStr * 60; 
         if (!timeStr) return 0;
         const parts = timeStr.split(':');
         return (parseInt(parts[0]) * 60) + parseInt(parts[1]);
+    }
+
+    // === SCREENSAVER LOGIC ===
+    function resetIdleTimer() {
+        // 1. Wenn dunkel -> Aufwecken (Overlay weg)
+        wakeUp();
+
+        // 2. Timer neu starten
+        clearTimeout(screensaverTimer);
+        
+        // Nur starten, wenn aktiviert (>0) UND kein "Neue Nachricht" Alarm da ist
+        const isAlertOpen = document.getElementById('newMsgOverlay').style.display === 'flex';
+        
+        if (uiConf.screensaverMin > 0 && !isAlertOpen) {
+            const ms = uiConf.screensaverMin * 60 * 1000;
+            screensaverTimer = setTimeout(goDark, ms);
+        }
+    }
+
+    function goDark() {
+        // Sicherheitscheck: Nicht abdunkeln wenn Alarm an ist
+        if (document.getElementById('newMsgOverlay').style.display === 'flex') return;
+        
+        const el = document.getElementById('screensaverOverlay');
+        if(el) el.classList.add('active');
+    }
+
+    function wakeUp() {
+        const el = document.getElementById('screensaverOverlay');
+        if (el && el.classList.contains('active')) {
+            el.classList.remove('active');
+        }
     }
 
     // NEU: Nachtmodus Logik (Minuten-Genau)
@@ -888,7 +957,7 @@ smartLog(msg);
         }
     }
 
- // 3. Menü öffnen & Werte setzen
+// 3. Menü öffnen & Werte setzen
     function openUiSettings() {
         document.getElementById('uiTweaksModal').style.display = 'flex';
         
@@ -898,15 +967,18 @@ smartLog(msg);
         document.getElementById('valText').innerText = uiConf.textSize;
         document.getElementById('valImg').innerText = uiConf.imgSize;
 
-        // Zoom Einstellungen
+        // Zoom & Screensaver Einstellungen laden
         document.getElementById('checkZoom').checked = uiConf.zoomActive;
         document.getElementById('numZoomTime').value = uiConf.zoomTime || 10;
+        
+        // NEU: Screensaver Feld füllen (falls vorhanden)
+        const saverInput = document.getElementById('numSaverTime');
+        if(saverInput) saverInput.value = uiConf.screensaverMin || 0;
 
-        // NEU: Device ID laden
-        // Wir holen sie direkt aus der globalen config
+        // Device ID laden
         document.getElementById('inputDeviceId').value = config.deviceId || "";
     }
-
+    
     // 4. Live Vorschau beim Schieben (Slider)
     function previewUi() {
         const t = document.getElementById('rangeText').value;
@@ -916,7 +988,7 @@ smartLog(msg);
         applyUi(t, i);
     }
 
- // 5. Speichern oder Abbrechen
+// 5. Speichern oder Abbrechen
     function closeUi(save) {
         document.getElementById('uiTweaksModal').style.display = 'none';
         
@@ -926,16 +998,20 @@ smartLog(msg);
             uiConf.imgSize = document.getElementById('rangeImg').value;
             uiConf.zoomActive = document.getElementById('checkZoom').checked;
             uiConf.zoomTime = parseInt(document.getElementById('numZoomTime').value) || 10;
-            localStorage.setItem('oma_ui_settings', JSON.stringify(uiConf));
-
-            // B) Device ID speichern (MODIFIZIERT FÜR LEERE ID)
-            const newId = document.getElementById('inputDeviceId').value.trim();
             
-            // Wir vergleichen mit dem aktuellen Wert (oder leeren String, falls undefined)
+            // NEU: Screensaver speichern
+            const saverVal = document.getElementById('numSaverTime');
+            if(saverVal) uiConf.screensaverMin = parseInt(saverVal.value) || 0;
+
+            localStorage.setItem('oma_ui_settings', JSON.stringify(uiConf));
+            
+            // Timer mit neuen Werten sofort anwenden
+            resetIdleTimer();
+
+            // B) Device ID speichern
+            const newId = document.getElementById('inputDeviceId').value.trim();
             const currentId = config.deviceId || "";
 
-            // Check: Ist der neue Wert anders als der alte?
-            // Wir erlauben jetzt explizit auch einen leeren String ""
             if (newId !== currentId) {
                 config.deviceId = newId;
                 localStorage.setItem('oma_conf_v10', JSON.stringify(config));
@@ -950,7 +1026,7 @@ smartLog(msg);
             applyUi(uiConf.textSize, uiConf.imgSize);
         }
     }
-
+    
     // 6. Werte anwenden (CSS)
     function applyUi(textVal, imgVal) {
         const txt = document.getElementById('messageText');
@@ -993,20 +1069,25 @@ smartLog(msg);
         seenCache = JSON.parse(localStorage.getItem('oma_seen_msgs') || '{}');
     } catch(e) {}
 
+
     // Funktion: Overlay zeigen, wenn Nachricht unbekannt
     function checkNewMessage(ts) {
+        // WICHTIG: Sofort aufwecken (Screensaver aus), wenn wir prüfen
+        wakeUp(); 
+        
         // Wenn Timestamp noch NICHT im Cache ist -> ALARM!
         if (!seenCache[ts]) {
             const overlay = document.getElementById('newMsgOverlay');
             if (overlay.style.display !== 'flex') {
                 overlay.style.display = 'flex';
-                // Optional: Sound abspielen? 
-                // document.getElementById('pingSound').play(); 
+                // Wenn der Alarm angeht, stoppen wir den Screensaver-Timer,
+                // damit das Tablet nicht schwarz wird, während "Neue Nachricht" blinkt.
+                clearTimeout(screensaverTimer);
             }
         }
     }
 
-    // Funktion: Wird beim Klick auf das Overlay ausgeführt
+// Funktion: Wird beim Klick auf das Overlay ausgeführt
     function dismissNotification() {
         // 1. Overlay ausblenden
         document.getElementById('newMsgOverlay').style.display = 'none';
@@ -1014,7 +1095,7 @@ smartLog(msg);
         // 2. Alle aktuell geladenen Nachrichten als "gesehen" markieren
         const now = Date.now();
         messages.forEach(m => {
-            seenCache[m.timestamp] = now; // Wir speichern WANN es gesehen wurde
+            seenCache[m.timestamp] = now; 
         });
 
         // 3. Aufräumen (Pruning > 14 Tage)
@@ -1027,8 +1108,11 @@ smartLog(msg);
 
         // 4. Speichern
         localStorage.setItem('oma_seen_msgs', JSON.stringify(seenCache));
+        
+        // NEU: Jetzt wo der Alarm bestätigt ist, darf der Screensaver-Countdown wieder laufen
+        resetIdleTimer();
     }
-
+    
     // === DEVICE REGISTRATION (PING ANTWORT) ===
     async function registerSelfOnGitHub() {
         if(!config.ghUser || !config.ghToken) return;
