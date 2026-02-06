@@ -29,8 +29,36 @@
     
     /* MAIN DISPLAY */
     #displayArea { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; text-align: center; overflow: hidden; position: relative; }
-    #messageText { font-size: 3vh; line-height: 1.2; font-weight: bold; word-wrap: break-word; max-height: 100%; overflow-y: auto; width: 100%; }
-    #messageImg { max-width: 100%; max-height: 40vh; object-fit: contain; border-radius: 20px; margin-bottom: 20px; display: none; }
+#messageImg { 
+        /* Bild auch begrenzen, damit Pfeile nichts Wichtiges verdecken */
+        max-width: 70%;       /* Geändert von 100% auf 70% */
+        max-height: 45vh;      
+        object-fit: contain; 
+        border-radius: 15px; 
+        margin-bottom: 25px;   
+        display: none; 
+        box-shadow: 0 0 20px rgba(0,0,0,0.5); 
+        z-index: 10; /* Damit es nicht hinter Background-Elementen verschwindet */
+    }
+
+    #messageText { 
+        text-align: left; 
+        font-weight: 400; 
+        line-height: 1.5; 
+        
+        /* HIER IST DIE ÄNDERUNG: */
+        width: 70%; /* Geändert von 90% -> Platz für die Pfeile schaffen */
+        max-width: 800px; 
+        
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        color: #f0f0f0; 
+
+        font-size: 4vh; 
+        word-wrap: break-word; 
+        max-height: 100%; 
+        overflow-y: auto; 
+        z-index: 10;
+    }
     
 
     /* SETUP SCREEN */
