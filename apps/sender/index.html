@@ -656,24 +656,49 @@ function copyLink() {
         return bytes.buffer;
     }
 
-    // --- 4. SENDER LOGIC ---
-    function compressImage(file) { 
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader(); reader.readAsDataURL(file);
-            reader.onload = (event) => {
-                const img = new Image(); img.src = event.target.result;
-                img.onload = () => {
-                    const canvas = document.createElement('canvas');
-                    const MAX = 1200; 
-                    let w=img.width, h=img.height; 
-                    if(w>h){if(w>MAX){h*=MAX/w;w=MAX;}}else{if(h>MAX){w*=MAX/h;h=MAX;}} 
-                    canvas.width=w; canvas.height=h; 
-                    const ctx=canvas.getContext("2d"); ctx.drawImage(img,0,0,w,h);
-                    canvas.toBlob((b)=>resolve(b),'image/jpeg',0.7);
-                };
-            };
-        });
-    }
+    
+function compressImage(file) { 
+    return new Promise((resolve, reject) => {
+        // TRICK: Wir nutzen eine Blob-URL statt Base64. Das ist blitzschnell.
+        const url = URL.createObjectURL(file);
+        const img = new Image();
+        
+        img.onerror = () => {
+            URL.revokeObjectURL(url);
+            reject("Bild konnte nicht geladen werden.");
+        };
+
+        img.onload = () => {
+            URL.revokeObjectURL(url); // Speicher sofort wieder freigeben
+            
+            const MAX = 1000; // Reduziert auf 1000px für sicheren Upload
+            let w = img.width;
+            let h = img.height;
+
+            // Seitenverhältnis berechnen
+            if (w > h) {
+                if (w > MAX) { h *= MAX / w; w = MAX; }
+            } else {
+                if (h > MAX) { w *= MAX / h; h = MAX; }
+            }
+
+            const canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext("2d");
+            ctx.drawImage(img, 0, 0, w, h);
+
+            // Zu JPEG komprimieren (Qualität 0.7 spart viel Platz)
+            canvas.toBlob((blob) => {
+                if(blob) resolve(blob);
+                else reject("Komprimierungs-Fehler");
+            }, 'image/jpeg', 0.7);
+        };
+        
+        img.src = url;
+    });
+}
+
 
  async function send() {
         if(!conf.t || !conf.p) return alert("Einstellungen prüfen!");
@@ -1793,61 +1818,60 @@ async function saveToStock() {
     const isMulti = document.getElementById('checkMultiStock').checked;
     const name = document.getElementById('stockName').value || "Familie";
     const fileInput = document.getElementById('stockFileInput');
-    
-    // Button Feedback
     const btn = document.getElementById('btnStock');
     const oldBtnText = btn.innerText;
+    
     btn.disabled = true;
 
     try {
         let newStockEntries = [];
 
         if (isMulti) {
-            // === MULTI UPLOAD ===
             const files = fileInput.files;
             if (files.length === 0) throw new Error("Keine Bilder ausgewählt!");
 
             for (let i = 0; i < files.length; i++) {
-                // UI Update
-                btn.innerText = `Bild ${i+1} von ${files.length} wird verarbeitet...`;
-                
-                // 1. Komprimieren
-                const compressedBlob = await compressImage(files[i]);
-                const fileBuf = await compressedBlob.arrayBuffer();
+                try {
+                    // UI Update erzwingen
+                    btn.innerText = `⏳ Bild ${i+1}/${files.length} wird verarbeitet...`;
+                    await new Promise(r => setTimeout(r, 50)); // Kurze Pause für UI
 
-                // 2. Verschlüsseln (Bild)
-                const encFileBuf = await encryptData(fileBuf, conf.p);
-                
-                // WICHTIGER FIX: Asynchrone Base64 Umwandlung (verhindert Browser-Freeze)
-                const encImgBase64 = await bufferToBase64Async(encFileBuf);
+                    // 1. Komprimieren (Neue schnelle Funktion)
+                    const compressedBlob = await compressImage(files[i]);
+                    const fileBuf = await compressedBlob.arrayBuffer();
 
-                // 3. Verschlüsseln (Dummy Text Payload)
-                // Wir nutzen i als Offset für den Timestamp, damit die IDs unique sind
-                const payload = JSON.stringify({ 
-                    sender: name, 
-                    text: "", 
-                    timestamp: Date.now() + i 
-                });
-                const encTitle = await encryptText(payload, conf.p);
+                    // 2. Verschlüsseln
+                    const encFileBuf = await encryptData(fileBuf, conf.p);
+                    const encImgBase64 = await bufferToBase64Async(encFileBuf);
 
-                // 4. Zum Stapel hinzufügen
-                newStockEntries.push({
-                    added_at: Date.now() + i,
-                    enc: encTitle,
-                    img: encImgBase64
-                });
-                
-                // Kurze Pause für den UI Thread (damit der Button-Text aktualisiert wird)
-                await new Promise(r => setTimeout(r, 100));
+                    // 3. Payload
+                    const payload = JSON.stringify({ 
+                        sender: name, 
+                        text: "", 
+                        timestamp: Date.now() + i 
+                    });
+                    const encTitle = await encryptText(payload, conf.p);
+
+                    newStockEntries.push({
+                        added_at: Date.now() + i,
+                        enc: encTitle,
+                        img: encImgBase64
+                    });
+
+                } catch (err) {
+                    console.error("Fehler bei Bild " + i, err);
+                    // Wir machen einfach mit dem nächsten weiter!
+                }
             }
-
         } else {
-            // === SINGLE UPLOAD ===
-            btn.innerText = "Verschlüssele...";
+            // SINGLE MODE
+            btn.innerText = "⏳ Verarbeite...";
+            await new Promise(r => setTimeout(r, 50));
+
             const text = document.getElementById('stockText').value;
             const file = fileInput.files[0];
-
-            if(!text && !file) throw new Error("Text oder Bild fehlt.");
+            
+            if(!text && !file) throw new Error("Leer?");
 
             const payload = JSON.stringify({ sender: name, text: text, timestamp: Date.now() });
             const encTitle = await encryptText(payload, conf.p);
@@ -1857,99 +1881,72 @@ async function saveToStock() {
                 const compressedBlob = await compressImage(file);
                 const fileBuf = await compressedBlob.arrayBuffer();
                 const encFileBuf = await encryptData(fileBuf, conf.p);
-                // Auch hier den Fix anwenden
                 encImgBase64 = await bufferToBase64Async(encFileBuf);
             }
-
-            newStockEntries.push({
-                added_at: Date.now(),
-                enc: encTitle,
-                img: encImgBase64
-            });
+            
+            newStockEntries.push({ added_at: Date.now(), enc: encTitle, img: encImgBase64 });
         }
 
-        // === GITHUB SAVE (Alles auf einmal) ===
-        btn.innerText = "Lade Vorrat von GitHub...";
-        
+        if(newStockEntries.length === 0) throw new Error("Keine Bilder konnten verarbeitet werden.");
+
+        // === GITHUB UPLOAD ===
+        btn.innerText = "☁️ Lade GitHub...";
         const url = `https://api.github.com/repos/${conf.gu}/${conf.gr}/contents/vorrat.json`;
         const header = { 'Authorization': `Bearer ${conf.gt}`, 'Accept': 'application/vnd.github.v3+json' };
 
-        // 1. Laden
         let currentStock = [];
         let sha = null;
-        
-        const resp = await fetch(url, { headers: header, cache: "no-store" });
-        if(resp.ok) {
-            const fileData = await resp.json();
-            sha = fileData.sha;
-            // Sauberer Content Decode
-            let rawB64 = fileData.content;
-            if(!rawB64 && fileData.sha) {
-                // Fallback für große Files via Blob API
-                 const blobResp = await fetch(`https://api.github.com/repos/${conf.gu}/${conf.gr}/git/blobs/${fileData.sha}`, { headers: header });
-                 if(blobResp.ok) {
-                     const blobData = await blobResp.json();
-                     rawB64 = blobData.content;
-                 }
+
+        // Versuche bestehenden Vorrat zu laden
+        try {
+            const resp = await fetch(url, { headers: header, cache: "no-store" });
+            if(resp.ok) {
+                const fileData = await resp.json();
+                sha = fileData.sha;
+                let rawB64 = fileData.content;
+                // Blob-Fallback für große Files
+                if(!rawB64 && fileData.sha) {
+                    const blobResp = await fetch(`https://api.github.com/repos/${conf.gu}/${conf.gr}/git/blobs/${fileData.sha}`, { headers: header });
+                    if(blobResp.ok) { const d = await blobResp.json(); rawB64 = d.content; }
+                }
+                if(rawB64) {
+                    currentStock = JSON.parse(decodeURIComponent(escape(atob(rawB64.replace(/\s/g, '')))));
+                }
             }
+        } catch(e) { console.log("Neuer Vorrat wird angelegt..."); }
 
-            if(rawB64) {
-                const rawContent = rawB64.replace(/\s/g, '');
-                try {
-                    currentStock = JSON.parse(decodeURIComponent(escape(atob(rawContent))));
-                } catch(e) { console.error("Parse Error Vorrat", e); }
-            }
-        }
-
-        btn.innerText = "Speichere auf GitHub... ☁️";
-
-        // 2. Anhängen
+        btn.innerText = "☁️ Speichere...";
         currentStock.push(...newStockEntries);
 
-        // 3. Speichern
-        // Wichtig: JSON Stringify kann bei vielen Bildern groß werden,
-        // aber das Limit von GitHub API (~100MB) sollte für 10-20 komprimierte Bilder reichen.
-        const jsonStr = JSON.stringify(currentStock, null, 2);
-        // Base64 Encode des JSON Strings (utf-8 safe)
-        const newContent = btoa(unescape(encodeURIComponent(jsonStr)));
+        const newContent = btoa(unescape(encodeURIComponent(JSON.stringify(currentStock))));
         
-        const body = {
-            message: isMulti ? `Add ${newStockEntries.length} images to stock 📸` : "Add to stock 📦",
-            content: newContent
-        };
-        if(sha) body.sha = sha;
-
         const putResp = await fetch(url, {
             method: 'PUT',
             headers: { 'Authorization': `Bearer ${conf.gt}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
+            body: JSON.stringify({
+                message: "Update stock via App",
+                content: newContent,
+                sha: sha
+            })
         });
 
-        if(!putResp.ok) throw new Error("GitHub Save Error: " + putResp.status);
+        if(!putResp.ok) throw new Error("Upload fehlgeschlagen: " + putResp.status);
 
-        // ERFOLG
-        alert(`Erfolg! ${newStockEntries.length} Element(e) im Vorrat gespeichert. ✅`);
+        alert(`✅ Fertig! ${newStockEntries.length} Nachrichten im Vorrat.`);
         
         // Reset
         document.getElementById('stockText').value = "";
         document.getElementById('stockFileInput').value = "";
-        if(isMulti) {
-            document.getElementById('stockMediaText').innerText = "Mehrere Fotos auswählen...";
-        } else {
-            document.getElementById('stockMediaText').innerText = "Foto für Vorrat";
-            document.getElementById('stockImagePreview').style.display = "none";
-        }
+        document.getElementById('stockImagePreview').style.display = 'none';
 
     } catch(e) {
-        console.error(e);
         alert("Fehler: " + e.message);
     }
-
+    
     btn.innerText = oldBtnText;
     btn.disabled = false;
 }
     
-
 // NEU: Schnelle, asynchrone Base64 Umwandlung (verhindert den Freeze)
 function bufferToBase64Async(buffer) {
     return new Promise((resolve, reject) => {
