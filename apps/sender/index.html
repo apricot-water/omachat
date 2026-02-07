@@ -262,6 +262,8 @@
         <div style="padding: 0 20px 20px 20px; font-weight:bold; font-size:20px; color:var(--text-sub)">Menü</div>
         <div class="menu-item active" onclick="switchTab('send')">✍️ Schreiben</div>
         <div class="menu-item" onclick="switchTab('view')">🛠️ Nachrichten bearbeiten</div>
+     <!-- FÜGE DIES NACH "Schreiben" und VOR "Nachrichten bearbeiten" EIN -->
+<div class="menu-item" onclick="switchTab('stock')">📦 Vorrat auffüllen</div>
         <!-- NEU: Fernsteuerung -->
         <div class="menu-item" onclick="switchTab('admin')">🎮 Fernsteuerung</div>
         <div class="menu-item" onclick="switchTab('log')">📊 Aktivitäten Log</div>
@@ -289,6 +291,38 @@
         </div>
         <div class="bottom-bar">
             <button id="btnSend" class="btn-primary" onclick="send()">Senden 🚀</button>
+        </div>
+    </div>
+
+    <!-- TAB: VORRAT (NEU) -->
+    <div id="tab-stock" class="tab-content">
+        <div class="scroll-area">
+            <div style="background:var(--input-bg); padding:15px; border-radius:12px; margin-bottom:20px; border: 1px solid #ffcc00;">
+                <div style="font-weight:bold; color:#ffcc00; margin-bottom:5px;">ℹ️ Info zum Vorrat</div>
+                <div style="font-size:13px; color:var(--text-sub);">
+                    Nachrichten hier landen nicht sofort bei Oma. Der automatische Bot prüft täglich um 18:00 Uhr: 
+                    "Hat Oma heute schon was bekommen?" <br>
+                    Falls <b>NEIN</b>, holt er sich hier eine Nachricht raus und sendet sie.
+                </div>
+            </div>
+
+            <div>
+                <div class="label-small">Absender (für den Vorrat)</div>
+                <input id="stockName" placeholder="Name">
+            </div>
+            <div style="flex:1; display:flex; flex-direction:column;">
+                <div class="label-small">Nachricht</div>
+                <textarea id="stockText" placeholder="Zeitlose Nachricht..." style="flex:1; min-height:150px;"></textarea>
+            </div>
+            <div class="media-upload" onclick="document.getElementById('stockFileInput').click()">
+                <div style="font-size:24px; opacity:0.5">📷</div>
+                <div id="stockMediaText" style="font-weight:600; color:var(--accent); margin-top:5px">Foto für Vorrat</div>
+                <img id="stockImagePreview" class="media-preview-img">
+                <input type="file" id="stockFileInput" accept="image/*" style="display:none" onchange="previewStockFile()">
+            </div>
+        </div>
+        <div class="bottom-bar">
+            <button id="btnStock" class="btn-primary" style="background: linear-gradient(135deg, #ffcc00, #ff9500); color:black;" onclick="saveToStock()">In den Vorrat legen 📥</button>
         </div>
     </div>
 
@@ -843,7 +877,8 @@ function switchTab(tab) {
         loadDevicesList(); // <--- NEU: Liste laden wenn Tab geöffnet wird
         }
         if(tab === 'send') document.getElementById('pageTitle').innerText = "Nachricht schreiben";
-        
+
+    if(tab === 'stock') document.getElementById('pageTitle').innerText = "Vorrat verwalten"; /
         if(tab === 'view') {
             document.getElementById('pageTitle').innerText = "Omas Sicht";
             resetViewer();
@@ -1669,6 +1704,142 @@ function startScanner() {
         } catch(e) {
             alert("Fehler: " + e.message);
         }
+    }
+
+// === VORRAT LOGIC ===
+
+    // 1. Vorschau für das Bild im Vorrat-Tab
+    function previewStockFile() {
+        const file = document.getElementById('stockFileInput').files[0];
+        if(!file) return;
+        
+        // Wir nutzen hier den gleichen Editor-Workflow wie beim normalen Senden?
+        // Einfachheitshalber: Ja, wir nutzen die globale previewFile Funktion, 
+        // müssen aber tricksen, damit das Ergebnis im richtigen Image-Tag landet.
+        
+        // Da du den Cropper nutzt, machen wir es hier simpel ohne Cropper für den Vorrat 
+        // ODER wir kopieren die Simple-Preview Logik:
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const img = document.getElementById('stockImagePreview');
+            img.src = e.target.result;
+            img.style.display = 'block';
+            document.getElementById('stockMediaText').innerText = "Bild ausgewählt";
+        };
+        reader.readAsDataURL(file);
+    }
+
+    // Hilfsfunktion: ArrayBuffer zu Base64 String (für JSON Speicherung nötig)
+    function arrayBufferToBase64(buffer) {
+        let binary = '';
+        const bytes = new Uint8Array(buffer);
+        const len = bytes.byteLength;
+        for (let i = 0; i < len; i++) {
+            binary += String.fromCharCode(bytes[i]);
+        }
+        return window.btoa(binary);
+    }
+
+    async function saveToStock() {
+        if(!conf.gu || !conf.gr || !conf.gt) return alert("Bitte erst GitHub Config in den Einstellungen eintragen!");
+        if(!conf.p) return alert("Passwort fehlt!");
+
+        const name = document.getElementById('stockName').value || "Familie";
+        const text = document.getElementById('stockText').value;
+        const fileInput = document.getElementById('stockFileInput').files[0];
+
+        if(!text && !fileInput) return showToast("Leer?");
+
+        const btn = document.getElementById('btnStock');
+        const oldText = btn.innerText;
+        btn.innerText = "Verschlüssele & Speichere...";
+        btn.disabled = true;
+
+        try {
+            // 1. VERSCHLÜSSELN (Lokal)
+            // Payload bauen (identisch zu ntfy Payload)
+            const payload = JSON.stringify({ sender: name, text: text, timestamp: Date.now() });
+            const encTitle = await encryptText(payload, conf.p);
+            
+            let encImgBase64 = null;
+
+            if(fileInput) {
+                // Komprimieren
+                const compressedBlob = await compressImage(fileInput);
+                const fileBuf = await compressedBlob.arrayBuffer();
+                
+                // Verschlüsseln
+                const encFileBuf = await encryptData(fileBuf, conf.p);
+                
+                // Zu Base64 wandeln für JSON Storage
+                encImgBase64 = arrayBufferToBase64(encFileBuf);
+            }
+
+            // Das Paket, das der Bot später einfach weiterleitet
+            const newEntry = {
+                added_at: Date.now(),
+                enc: encTitle,      // Verschlüsselter Text/Metadaten
+                img: encImgBase64   // Verschlüsseltes Bild (oder null)
+            };
+
+            // 2. GITHUB OPERATION (Laden -> Anhängen -> Speichern)
+            const url = `https://api.github.com/repos/${conf.gu}/${conf.gr}/contents/vorrat.json`;
+            const header = { 'Authorization': `Bearer ${conf.gt}`, 'Accept': 'application/vnd.github.v3+json' };
+
+            // A) Laden
+            let currentStock = [];
+            let sha = null;
+            
+            const resp = await fetch(url, { headers: header, cache: "no-store" });
+            
+            if(resp.ok) {
+                const fileData = await resp.json();
+                sha = fileData.sha;
+                const rawContent = fileData.content.replace(/\s/g, '');
+                try {
+                    currentStock = JSON.parse(decodeURIComponent(escape(atob(rawContent))));
+                } catch(e) { console.log("Vorrat war leer oder defekt, erstelle neu."); }
+            } else if(resp.status === 404) {
+                console.log("Vorrat Datei existiert noch nicht, wird erstellt.");
+            } else {
+                throw new Error("GitHub Fehler beim Laden: " + resp.status);
+            }
+
+            // B) Anhängen
+            currentStock.push(newEntry);
+
+            // C) Speichern
+            const newContent = btoa(unescape(encodeURIComponent(JSON.stringify(currentStock, null, 2))));
+            const body = {
+                message: "Add to Stock via App 📦",
+                content: newContent
+            };
+            if(sha) body.sha = sha;
+
+            const putResp = await fetch(url, {
+                method: 'PUT',
+                headers: { 'Authorization': `Bearer ${conf.gt}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+
+            if(!putResp.ok) throw new Error("Fehler beim Speichern: " + putResp.status);
+
+            // ERFOLG
+            alert("Erfolgreich im Vorrat gespeichert! 📦✅");
+            
+            // Reset UI
+            document.getElementById('stockText').value = "";
+            document.getElementById('stockFileInput').value = "";
+            document.getElementById('stockImagePreview').style.display = "none";
+            document.getElementById('stockMediaText').innerText = "Foto für Vorrat";
+
+        } catch(e) {
+            console.error(e);
+            alert("Fehler: " + e.message);
+        }
+
+        btn.innerText = oldText;
+        btn.disabled = false;
     }
     
     // Tour initialisieren (ganz am Ende starten)
