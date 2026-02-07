@@ -1061,22 +1061,30 @@ smartLog(msg);
         }
     }
 
-    // STEUERUNG: Wendet den Modus an (wird alle 10s gerufen)
-    function checkNightMode() {
+function checkNightMode() {
         const overlay = document.getElementById('nightOverlay');
         const isNight = isNightTime();
+        const wasNight = overlay.style.display === 'block';
 
         if (isNight) {
-            if(overlay.style.display !== 'block') {
-                overlay.style.display = 'block';
-                // Sicherheitshalber: Auch wenn wir in den Nachtmodus gehen -> Screensaver Logik
-                // Aber da das Overlay schwarz ist und Z-Index 3000 hat, sieht man eh nichts.
-            }
+            if(!wasNight) overlay.style.display = 'block';
         } else {
-            if(overlay.style.display !== 'none') overlay.style.display = 'none';
+            if(wasNight) {
+                // GUTE MORGEN LOGIK:
+                overlay.style.display = 'none';
+                
+                // Prüfen, ob wir was verpasst haben, während wir geschlafen haben
+                // Wir schauen uns die aktuellste Nachricht an
+                if(messages.length > 0) {
+                    const lastMsg = messages[messages.length - 1];
+                    // Wenn die noch nicht gesehen wurde -> Alarm jetzt nachholen!
+                    checkNewMessage(lastMsg.timestamp);
+                }
+            }
         }
     }
 
+    
     // ALARM CHECKER (Jetzt mit Nachtruhe-Schutz)
     function checkNewMessage(ts) {
         // 1. DER WICHTIGSTE CHECK:
