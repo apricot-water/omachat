@@ -256,15 +256,15 @@
         100% { transform: translateY(0px); }
     }
     
-    /* === NIGHT MODE === */
+    /* === NIGHT MODE (STRENG) === */
     #nightOverlay {
         display: none;
         position: fixed; top: 0; left: 0;
         width: 100vw; height: 100vh;
-        background: rgba(0, 0, 0, 0.85); /* 85% Dunkelheit */
-        z-index: 1500; /* Unter dem NewMessage Overlay (2000), aber über allem anderen */
-        pointer-events: none; /* WICHTIG: Man kann "durchklicken" */
-        transition: opacity 2s ease;
+        background: #000000; /* Komplett Schwarz statt transparent */
+        z-index: 3000; /* WICHTIG: Über dem Alarm (2000) und allem anderen */
+        pointer-events: none; /* Klicks gehen durch (damit man manuell aufwecken KANN, wenn man tippt) */
+        transition: opacity 1s ease;
     }
 
     /* === SCREENSAVER === */
