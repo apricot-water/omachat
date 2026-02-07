@@ -1716,26 +1716,38 @@ function startScanner() {
 
 // === VORRAT LOGIC ===
 
-    // 1. Vorschau für das Bild im Vorrat-Tab
-    function previewStockFile() {
-        const file = document.getElementById('stockFileInput').files[0];
-        if(!file) return;
-        
-        // Wir nutzen hier den gleichen Editor-Workflow wie beim normalen Senden?
-        // Einfachheitshalber: Ja, wir nutzen die globale previewFile Funktion, 
-        // müssen aber tricksen, damit das Ergebnis im richtigen Image-Tag landet.
-        
-        // Da du den Cropper nutzt, machen wir es hier simpel ohne Cropper für den Vorrat 
-        // ODER wir kopieren die Simple-Preview Logik:
+function previewStockFile() {
+    const fileInput = document.getElementById('stockFileInput');
+    const img = document.getElementById('stockImagePreview');
+    const infoText = document.getElementById('stockMediaText');
+    const isMulti = document.getElementById('checkMultiStock').checked;
+
+    if (isMulti) {
+        // Multi-Modus: Keine Bildvorschau, nur Text
+        if (fileInput.files.length > 0) {
+            infoText.innerText = `${fileInput.files.length} Bilder ausgewählt ✅`;
+            infoText.style.color = "var(--accent)";
+            img.style.display = 'none'; // Bild ausblenden
+        } else {
+            infoText.innerText = "Mehrere Fotos auswählen...";
+            img.style.display = 'none';
+        }
+    } else {
+        // Einzel-Modus: Bild anzeigen
+        const file = fileInput.files[0];
+        if (!file) return;
+
         const reader = new FileReader();
         reader.onload = (e) => {
-            const img = document.getElementById('stockImagePreview');
             img.src = e.target.result;
             img.style.display = 'block';
-            document.getElementById('stockMediaText').innerText = "Bild ausgewählt";
+            infoText.innerText = "Bild ausgewählt";
         };
         reader.readAsDataURL(file);
     }
+}
+
+    
 
     // Hilfsfunktion: ArrayBuffer zu Base64 String (für JSON Speicherung nötig)
     function arrayBufferToBase64(buffer) {
@@ -1749,165 +1761,211 @@ function startScanner() {
     }
 
     
-    function toggleStockMode() {
-        const isMulti = document.getElementById('checkMultiStock').checked;
-        const txtArea = document.getElementById('stockText');
-        const fileInput = document.getElementById('stockFileInput');
-        const mediaText = document.getElementById('stockMediaText');
-        const preview = document.getElementById('stockImagePreview');
+function toggleStockMode() {
+    const isMulti = document.getElementById('checkMultiStock').checked;
+    const txtArea = document.getElementById('stockText');
+    const fileInput = document.getElementById('stockFileInput');
+    const mediaText = document.getElementById('stockMediaText');
+    const preview = document.getElementById('stockImagePreview');
+
+    // Reset der aktuellen Auswahl, um Fehler zu vermeiden
+    fileInput.value = ""; 
+    preview.style.display = 'none';
+
+    if (isMulti) {
+        // Multi Modus AN
+        txtArea.style.display = 'none'; // Textfeld weg
+        fileInput.setAttribute('multiple', ''); // Mehrfachauswahl an
+        mediaText.innerText = "Mehrere Fotos auswählen...";
+    } else {
+        // Multi Modus AUS (Normal)
+        txtArea.style.display = 'block';
+        fileInput.removeAttribute('multiple');
+        mediaText.innerText = "Foto für Vorrat";
+    }
+}
+    
+    
+async function saveToStock() {
+    if(!conf.gu || !conf.gr || !conf.gt) return alert("GitHub Config fehlt!");
+    if(!conf.p) return alert("Passwort fehlt!");
+
+    const isMulti = document.getElementById('checkMultiStock').checked;
+    const name = document.getElementById('stockName').value || "Familie";
+    const fileInput = document.getElementById('stockFileInput');
+    
+    // Button Feedback
+    const btn = document.getElementById('btnStock');
+    const oldBtnText = btn.innerText;
+    btn.disabled = true;
+
+    try {
+        let newStockEntries = [];
 
         if (isMulti) {
-            // Multi Modus AN
-            txtArea.style.display = 'none'; // Textfeld ausblenden
-            fileInput.setAttribute('multiple', ''); // Mehrfachauswahl erlauben
-            mediaText.innerText = "Mehrere Fotos auswählen...";
-            preview.style.display = 'none'; // Vorschau bei Multi schwierig, lieber aus
-        } else {
-            // Multi Modus AUS (Normal)
-            txtArea.style.display = 'block';
-            fileInput.removeAttribute('multiple');
-            mediaText.innerText = "Foto für Vorrat";
-        }
-    }
+            // === MULTI UPLOAD ===
+            const files = fileInput.files;
+            if (files.length === 0) throw new Error("Keine Bilder ausgewählt!");
 
-    async function saveToStock() {
-        if(!conf.gu || !conf.gr || !conf.gt) return alert("GitHub Config fehlt!");
-        if(!conf.p) return alert("Passwort fehlt!");
-
-        const isMulti = document.getElementById('checkMultiStock').checked;
-        const name = document.getElementById('stockName').value || "Familie";
-        const fileInput = document.getElementById('stockFileInput');
-        
-        // Button Feedback
-        const btn = document.getElementById('btnStock');
-        const oldBtnText = btn.innerText;
-        btn.disabled = true;
-
-        try {
-            // Liste der neuen Einträge, die wir sammeln
-            let newStockEntries = [];
-
-            if (isMulti) {
-                // === MULTI UPLOAD ===
-                const files = fileInput.files;
-                if (files.length === 0) throw new Error("Keine Bilder ausgewählt!");
-
-                for (let i = 0; i < files.length; i++) {
-                    // UI Update: "Verarbeite 1/20..."
-                    btn.innerText = `Verarbeite Bild ${i+1}/${files.length}... ⏳`;
-                    
-                    // 1. Komprimieren
-                    const compressedBlob = await compressImage(files[i]);
-                    const fileBuf = await compressedBlob.arrayBuffer();
-
-                    // 2. Verschlüsseln (Bild)
-                    const encFileBuf = await encryptData(fileBuf, conf.p);
-                    const encImgBase64 = arrayBufferToBase64(encFileBuf);
-
-                    // 3. Verschlüsseln (Dummy Text Payload)
-                    // Wir speichern trotzdem einen Payload, damit das Format stimmt.
-                    // Text ist leer, aber Absender und Zeitstempel sind drin.
-                    const payload = JSON.stringify({ 
-                        sender: name, 
-                        text: "", // Kein Text im Multi-Modus
-                        timestamp: Date.now() + i // +i damit jeder Timestamp unique ist
-                    });
-                    const encTitle = await encryptText(payload, conf.p);
-
-                    // 4. Zum Stapel hinzufügen
-                    newStockEntries.push({
-                        added_at: Date.now(),
-                        enc: encTitle,
-                        img: encImgBase64
-                    });
-                    
-                    // Kurze Atempause für den Browser UI Thread
-                    await new Promise(r => setTimeout(r, 50));
-                }
-
-            } else {
-                // === SINGLE UPLOAD (Alter Code) ===
-                btn.innerText = "Verschlüssele...";
-                const text = document.getElementById('stockText').value;
-                const file = fileInput.files[0];
-
-                if(!text && !file) throw new Error("Text oder Bild fehlt.");
-
-                const payload = JSON.stringify({ sender: name, text: text, timestamp: Date.now() });
-                const encTitle = await encryptText(payload, conf.p);
+            for (let i = 0; i < files.length; i++) {
+                // UI Update
+                btn.innerText = `Bild ${i+1} von ${files.length} wird verarbeitet...`;
                 
-                let encImgBase64 = null;
-                if(file) {
-                    const compressedBlob = await compressImage(file);
-                    const fileBuf = await compressedBlob.arrayBuffer();
-                    const encFileBuf = await encryptData(fileBuf, conf.p);
-                    encImgBase64 = arrayBufferToBase64(encFileBuf);
-                }
+                // 1. Komprimieren
+                const compressedBlob = await compressImage(files[i]);
+                const fileBuf = await compressedBlob.arrayBuffer();
 
+                // 2. Verschlüsseln (Bild)
+                const encFileBuf = await encryptData(fileBuf, conf.p);
+                
+                // WICHTIGER FIX: Asynchrone Base64 Umwandlung (verhindert Browser-Freeze)
+                const encImgBase64 = await bufferToBase64Async(encFileBuf);
+
+                // 3. Verschlüsseln (Dummy Text Payload)
+                // Wir nutzen i als Offset für den Timestamp, damit die IDs unique sind
+                const payload = JSON.stringify({ 
+                    sender: name, 
+                    text: "", 
+                    timestamp: Date.now() + i 
+                });
+                const encTitle = await encryptText(payload, conf.p);
+
+                // 4. Zum Stapel hinzufügen
                 newStockEntries.push({
-                    added_at: Date.now(),
+                    added_at: Date.now() + i,
                     enc: encTitle,
                     img: encImgBase64
                 });
+                
+                // Kurze Pause für den UI Thread (damit der Button-Text aktualisiert wird)
+                await new Promise(r => setTimeout(r, 100));
             }
 
-            // === GITHUB SAVE (Alles auf einmal) ===
-            btn.innerText = "Speichere auf GitHub... ☁️";
-            
-            const url = `https://api.github.com/repos/${conf.gu}/${conf.gr}/contents/vorrat.json`;
-            const header = { 'Authorization': `Bearer ${conf.gt}`, 'Accept': 'application/vnd.github.v3+json' };
+        } else {
+            // === SINGLE UPLOAD ===
+            btn.innerText = "Verschlüssele...";
+            const text = document.getElementById('stockText').value;
+            const file = fileInput.files[0];
 
-            // 1. Laden
-            let currentStock = [];
-            let sha = null;
+            if(!text && !file) throw new Error("Text oder Bild fehlt.");
+
+            const payload = JSON.stringify({ sender: name, text: text, timestamp: Date.now() });
+            const encTitle = await encryptText(payload, conf.p);
             
-            const resp = await fetch(url, { headers: header, cache: "no-store" });
-            if(resp.ok) {
-                const fileData = await resp.json();
-                sha = fileData.sha;
-                const rawContent = fileData.content.replace(/\s/g, '');
-                try {
-                    currentStock = JSON.parse(decodeURIComponent(escape(atob(rawContent))));
-                } catch(e) {}
+            let encImgBase64 = null;
+            if(file) {
+                const compressedBlob = await compressImage(file);
+                const fileBuf = await compressedBlob.arrayBuffer();
+                const encFileBuf = await encryptData(fileBuf, conf.p);
+                // Auch hier den Fix anwenden
+                encImgBase64 = await bufferToBase64Async(encFileBuf);
             }
 
-            // 2. Anhängen (Spread Operator um alle neuen Einträge anzufügen)
-            currentStock.push(...newStockEntries);
-
-            // 3. Speichern
-            const newContent = btoa(unescape(encodeURIComponent(JSON.stringify(currentStock, null, 2))));
-            const body = {
-                message: isMulti ? `Add ${newStockEntries.length} images to stock 📸` : "Add to stock 📦",
-                content: newContent
-            };
-            if(sha) body.sha = sha;
-
-            const putResp = await fetch(url, {
-                method: 'PUT',
-                headers: { 'Authorization': `Bearer ${conf.gt}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify(body)
+            newStockEntries.push({
+                added_at: Date.now(),
+                enc: encTitle,
+                img: encImgBase64
             });
-
-            if(!putResp.ok) throw new Error("GitHub Save Error: " + putResp.status);
-
-            // ERFOLG
-            alert(`Erfolg! ${newStockEntries.length} Element(e) im Vorrat gespeichert. ✅`);
-            
-            // Reset
-            document.getElementById('stockText').value = "";
-            document.getElementById('stockFileInput').value = "";
-            document.getElementById('stockImagePreview').style.display = "none";
-            document.getElementById('stockMediaText').innerText = "Foto für Vorrat";
-            // Checkbox resetten? Geschmackssache. Ich lasse sie mal so, wie sie ist.
-
-        } catch(e) {
-            console.error(e);
-            alert("Fehler: " + e.message);
         }
 
-        btn.innerText = oldBtnText;
-        btn.disabled = false;
+        // === GITHUB SAVE (Alles auf einmal) ===
+        btn.innerText = "Lade Vorrat von GitHub...";
+        
+        const url = `https://api.github.com/repos/${conf.gu}/${conf.gr}/contents/vorrat.json`;
+        const header = { 'Authorization': `Bearer ${conf.gt}`, 'Accept': 'application/vnd.github.v3+json' };
+
+        // 1. Laden
+        let currentStock = [];
+        let sha = null;
+        
+        const resp = await fetch(url, { headers: header, cache: "no-store" });
+        if(resp.ok) {
+            const fileData = await resp.json();
+            sha = fileData.sha;
+            // Sauberer Content Decode
+            let rawB64 = fileData.content;
+            if(!rawB64 && fileData.sha) {
+                // Fallback für große Files via Blob API
+                 const blobResp = await fetch(`https://api.github.com/repos/${conf.gu}/${conf.gr}/git/blobs/${fileData.sha}`, { headers: header });
+                 if(blobResp.ok) {
+                     const blobData = await blobResp.json();
+                     rawB64 = blobData.content;
+                 }
+            }
+
+            if(rawB64) {
+                const rawContent = rawB64.replace(/\s/g, '');
+                try {
+                    currentStock = JSON.parse(decodeURIComponent(escape(atob(rawContent))));
+                } catch(e) { console.error("Parse Error Vorrat", e); }
+            }
+        }
+
+        btn.innerText = "Speichere auf GitHub... ☁️";
+
+        // 2. Anhängen
+        currentStock.push(...newStockEntries);
+
+        // 3. Speichern
+        // Wichtig: JSON Stringify kann bei vielen Bildern groß werden,
+        // aber das Limit von GitHub API (~100MB) sollte für 10-20 komprimierte Bilder reichen.
+        const jsonStr = JSON.stringify(currentStock, null, 2);
+        // Base64 Encode des JSON Strings (utf-8 safe)
+        const newContent = btoa(unescape(encodeURIComponent(jsonStr)));
+        
+        const body = {
+            message: isMulti ? `Add ${newStockEntries.length} images to stock 📸` : "Add to stock 📦",
+            content: newContent
+        };
+        if(sha) body.sha = sha;
+
+        const putResp = await fetch(url, {
+            method: 'PUT',
+            headers: { 'Authorization': `Bearer ${conf.gt}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+
+        if(!putResp.ok) throw new Error("GitHub Save Error: " + putResp.status);
+
+        // ERFOLG
+        alert(`Erfolg! ${newStockEntries.length} Element(e) im Vorrat gespeichert. ✅`);
+        
+        // Reset
+        document.getElementById('stockText').value = "";
+        document.getElementById('stockFileInput').value = "";
+        if(isMulti) {
+            document.getElementById('stockMediaText').innerText = "Mehrere Fotos auswählen...";
+        } else {
+            document.getElementById('stockMediaText').innerText = "Foto für Vorrat";
+            document.getElementById('stockImagePreview').style.display = "none";
+        }
+
+    } catch(e) {
+        console.error(e);
+        alert("Fehler: " + e.message);
     }
+
+    btn.innerText = oldBtnText;
+    btn.disabled = false;
+}
+    
+
+// NEU: Schnelle, asynchrone Base64 Umwandlung (verhindert den Freeze)
+function bufferToBase64Async(buffer) {
+    return new Promise((resolve, reject) => {
+        const blob = new Blob([buffer]);
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const dataUrl = e.target.result;
+            // Wir brauchen nur den Teil nach dem Komma (das reine Base64)
+            const base64 = dataUrl.split(',')[1];
+            resolve(base64);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+    });
+}
+
     
     // Tour initialisieren (ganz am Ende starten)
     tour.init();
