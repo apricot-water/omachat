@@ -263,7 +263,7 @@
         <div class="menu-item active" onclick="switchTab('send')">✍️ Schreiben</div>
         <div class="menu-item" onclick="switchTab('view')">🛠️ Nachrichten bearbeiten</div>
      <!-- FÜGE DIES NACH "Schreiben" und VOR "Nachrichten bearbeiten" EIN -->
-<div class="menu-item" onclick="switchTab('stock')">📦 Vorrat auffüllen</div>
+       <div class="menu-item" onclick="switchTab('stock')">📦 Vorrat auffüllen</div>
         <!-- NEU: Fernsteuerung -->
         <div class="menu-item" onclick="switchTab('admin')">🎮 Fernsteuerung</div>
         <div class="menu-item" onclick="switchTab('log')">📊 Aktivitäten Log</div>
@@ -878,7 +878,7 @@ function switchTab(tab) {
         }
         if(tab === 'send') document.getElementById('pageTitle').innerText = "Nachricht schreiben";
 
-    if(tab === 'stock') document.getElementById('pageTitle').innerText = "Vorrat verwalten"; /
+    if(tab === 'stock') document.getElementById('pageTitle').innerText = "Vorrat verwalten"; 
         if(tab === 'view') {
             document.getElementById('pageTitle').innerText = "Omas Sicht";
             resetViewer();
