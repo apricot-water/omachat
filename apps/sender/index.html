@@ -333,7 +333,11 @@
 <hr style="border:0; border-top:1px solid var(--input-bg); margin: 30px 0;">
 
 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
-    <div style="font-weight:bold; font-size:18px;">📦 Inhalt prüfen</div>
+    <!-- HIER IST DIE ÄNDERUNG: span id="stockCount" hinzugefügt -->
+    <div style="font-weight:bold; font-size:18px;">
+        📦 Inhalt prüfen <span id="stockCount" style="color:var(--text-sub); font-size:15px; font-weight:normal;"></span>
+    </div>
+    
     <button onclick="loadStockData()" style="font-size:14px; background:none; border:none; color:var(--accent); cursor:pointer; font-weight:600;">↻ Laden</button>
 </div>
 
@@ -1982,6 +1986,7 @@ function bufferToBase64Async(buffer) {
 
 async function loadStockData() {
     const list = document.getElementById('stockList');
+    const countLabel = document.getElementById('stockCount'); // <--- NEU
     list.innerHTML = '<div style="text-align:center; padding:20px;">⏳ Lade Vorrat von GitHub...</div>';
 
     if(!conf.gu || !conf.gr || !conf.gt) {
