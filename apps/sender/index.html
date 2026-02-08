@@ -2100,14 +2100,13 @@ async function loadStockData() {
 }
 
 async function deleteFromStock(ts) {
-    if(!confirm("Diesen Eintrag wirklich aus dem Vorrat löschen?")) return;
+    if(!confirm("Diesen Eintrag wirklich löschen?")) return;
 
     const list = document.getElementById('stockList');
-    // Kurzes Feedback
-    list.style.opacity = "0.5";
+    list.style.opacity = "0.5"; // Feedback: Wird bearbeitet
     
     try {
-        // 1. Aktuellen Stand laden (damit wir nichts überschreiben)
+        // 1. Aktuellen Stand laden
         const url = `https://api.github.com/repos/${conf.gu}/${conf.gr}/contents/vorrat.json`;
         const header = { 'Authorization': `Bearer ${conf.gt}`, 'Accept': 'application/vnd.github.v3+json' };
         
@@ -2115,15 +2114,32 @@ async function deleteFromStock(ts) {
         if(!resp.ok) throw new Error("Konnte Vorrat nicht laden");
         
         const fileData = await resp.json();
-        const rawContent = fileData.content.replace(/\s/g, '');
+        
+        // --- HIER WAR DER FEHLER: DER BLOB-CHECK FEHLTE ---
+        let rawB64 = fileData.content;
+        
+        // Wenn Datei > 1MB, müssen wir den Inhalt extra holen
+        if(!rawB64 && fileData.sha) {
+             const blobResp = await fetch(`https://api.github.com/repos/${conf.gu}/${conf.gr}/git/blobs/${fileData.sha}`, { headers: header });
+             if(blobResp.ok) {
+                 const blobData = await blobResp.json();
+                 rawB64 = blobData.content;
+             }
+        }
+
+        if(!rawB64) throw new Error("Konnte Dateiinhalt nicht lesen (zu groß/leer).");
+        // --------------------------------------------------
+
+        const rawContent = rawB64.replace(/\s/g, '');
         let stockArray = JSON.parse(decodeURIComponent(escape(atob(rawContent))));
 
-        // 2. Filtern (Alles behalten, was NICHT diesen Timestamp hat)
-        // Wir nutzen added_at als ID, da das eindeutig ist
+        // 2. Filtern (löschen)
         const newArray = stockArray.filter(item => item.added_at !== ts);
 
         // 3. Speichern
-        const newContent = btoa(unescape(encodeURIComponent(JSON.stringify(newArray))));
+        // WICHTIG: UTF-8 safe encode
+        const jsonStr = JSON.stringify(newArray);
+        const newContent = btoa(unescape(encodeURIComponent(jsonStr)));
         
         const putResp = await fetch(url, {
             method: 'PUT',
@@ -2135,19 +2151,18 @@ async function deleteFromStock(ts) {
             })
         });
 
-        if(!putResp.ok) throw new Error("Löschen fehlgeschlagen");
+        if(!putResp.ok) throw new Error("Speichern fehlgeschlagen: " + putResp.status);
 
         // 4. UI neu laden
-        alert("Gelöscht!");
+        alert("Gelöscht! ✅");
         list.style.opacity = "1";
-        loadStockData(); // Liste neu aufbauen
+        loadStockData(); // Liste aktualisieren
 
     } catch(e) {
         alert("Fehler: " + e.message);
         list.style.opacity = "1";
     }
 }
-
     
     
     // Tour initialisieren (ganz am Ende starten)
