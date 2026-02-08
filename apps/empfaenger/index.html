@@ -644,6 +644,7 @@ async function processAndAdd(item, silent = false) {
     async function startApp() {
         await loadGitHubArchive();
         connectNtfy();
+        startConnectionWatchdog(); // <--- DIESE ZEILE IST WICHTIG!
     }
 
   async function loadGitHubArchive() {
@@ -681,16 +682,42 @@ async function processAndAdd(item, silent = false) {
         } catch(e) { log("GitHub Fehler: " + e.message); }
     }
 
-    
-   function connectNtfy() {
-        log(`Live: ${config.ntfyTopic}`);
-        const es = new EventSource(`https://ntfy.sh/${config.ntfyTopic}/sse?since=all`);
+    // === GLOBALE VARIABLEN FÜR DIE VERBINDUNG ===
+    let es = null;
+    let connectionWatchdog = null;
+
+    // === VERBINDUNGSAUFBAU MIT RECONNECT-SCHUTZ ===
+    function connectNtfy() {
+        // 1. Alte Verbindung sauber schließen, falls vorhanden
+        if (es) {
+            try { es.close(); } catch(e) {}
+            es = null;
+        }
+
+        log(`Verbinde zu: ${config.ntfyTopic}...`);
+        // Status auf Orange (Verbinde...)
+        const statusEl = document.getElementById('statusLight');
+        if(statusEl) statusEl.style.background = 'orange';
+
+        // 2. Neue Verbindung öffnen
+        es = new EventSource(`https://ntfy.sh/${config.ntfyTopic}/sse?since=all`);
         
-        es.onopen = () => document.getElementById('statusLight').style.background = '#4cd137';
-        es.onerror = () => document.getElementById('statusLight').style.background = 'red';
+        es.onopen = () => {
+            log("Verbindung stabil ✅");
+            if(statusEl) statusEl.style.background = '#4cd137'; // Grün
+        };
+
+        es.onerror = (err) => {
+            // Fehler anzeigen, aber keinen sofortigen Loop starten (macht der Watchdog)
+            if(statusEl) statusEl.style.background = 'red';
+        };
 
         es.onmessage = async (e) => {
             const data = JSON.parse(e.data);
+            
+            // Keepalive Events ignorieren
+            if (data.event === 'keepalive') return;
+
             const msgTimestamp = data.time;
 
             if (data.event === 'message') {
@@ -699,6 +726,7 @@ async function processAndAdd(item, silent = false) {
 
                 // === ADMIN COMMANDS ===
                 try {
+                    // Prüfen ob es JSON ist (Command)
                     const cmdData = JSON.parse(data.message);
                     
                     // 1. TARGET CHECK (Bin ich gemeint?)
@@ -759,7 +787,9 @@ async function processAndAdd(item, silent = false) {
                             currentIndex = messages.length - 1;
                             updateDisplay();
                         }
+                        // Alarm erzwingen (auch nachts, wenn explizit gefordert)
                         document.getElementById('newMsgOverlay').style.display = 'flex';
+                        wakeUp(); // Screensaver beenden
                         return;
                     }
 
@@ -783,7 +813,7 @@ async function processAndAdd(item, silent = false) {
                         return;
                     }
 
-                } catch(err) { /* Kein JSON-Command -> Normale Nachricht */ }
+                } catch(err) { /* Kein JSON-Command -> Normale Nachricht, Fehler ignorieren */ }
 
                 // === 3. NORMALE NACHRICHT ===
                 let encPayload = data.attachment ? data.title : data.message;
@@ -797,6 +827,32 @@ async function processAndAdd(item, silent = false) {
                 });
             }
         };
+    }
+
+    // === DER WACHHUND (WATCHDOG) ===
+    // Diese Funktion muss EINMAL in startApp() aufgerufen werden!
+    function startConnectionWatchdog() {
+        if (connectionWatchdog) clearInterval(connectionWatchdog);
+
+        // Prüfe alle 15 Sekunden
+        connectionWatchdog = setInterval(() => {
+            // readyState: 0=CONNECTING, 1=OPEN, 2=CLOSED
+            // Wenn Verbindung zu (2) oder seit Ewigkeiten versucht zu verbinden (0)
+            if (!es || es.readyState === 2) {
+                log("Watchdog: Verbindung tot. Neustart...");
+                connectNtfy();
+            } else if (es.readyState === 0) {
+                // Hängt im Connecting Status? Resetten.
+                log("Watchdog: Hängt. Reset...");
+                connectNtfy();
+            }
+        }, 15000);
+
+        // Zusätzlich: Wenn Tablet aufwacht und Netzwerk meldet
+        window.addEventListener('online', () => {
+            log("Netzwerk ist zurück! Reconnect...");
+            connectNtfy();
+        });
     }
     
 function updateDisplay() {
@@ -821,7 +877,12 @@ function updateDisplay() {
             imgEl.style.display = 'none';
         }
 
-        const dateObj = new Date(msg.timestamp * 1000);
+        // === HIER WAR DER FEHLER ===
+        // Vorher: new Date(msg.timestamp * 1000); 
+        // Jetzt: Kein Malnehmen mehr, da wir das schon beim Laden gefixt haben!
+        const dateObj = new Date(msg.timestamp); 
+        // ===========================
+
         const dateStr = dateObj.toLocaleDateString([], {day:'2-digit', month:'2-digit'});
         const timeStr = dateObj.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
         const counterStr = `Nachricht ${currentIndex + 1} von ${messages.length}`;
@@ -835,9 +896,9 @@ function updateDisplay() {
                 <span style="color:#888; font-size:0.9em; margin-top:2px;">${counterStr}</span>
             </div>
         `;
-smartLog(msg);
+        smartLog(msg);
     }
-
+    
     // Navigation
     window.nextMsg = function() { if(currentIndex < messages.length - 1) { currentIndex++; updateDisplay(); } };
     window.prevMsg = function() { if(currentIndex > 0) { currentIndex--; updateDisplay(); } };
