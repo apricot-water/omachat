@@ -451,8 +451,7 @@ let config = JSON.parse(localStorage.getItem('oma_conf_v10')) || null;
     }
 
     // === PROCESS AND ADD (UPDATED) ===
- // === PROCESS AND ADD (MIT SILENT MODUS) ===
-    async function processAndAdd(item, silent = false) {
+async function processAndAdd(item, silent = false) {
         // 1. ZOMBIE & BLACKLIST CHECK
         if (item.hidden || hiddenRegistry.has(item.ts)) {
             hiddenRegistry.add(item.ts); 
@@ -461,31 +460,51 @@ let config = JSON.parse(localStorage.getItem('oma_conf_v10')) || null;
         
         // 2. Validierung
         if (!item.enc) return;
+        // Verhindern, dass Nachrichten doppelt hinzugefügt werden
         if (messages.some(m => m.timestamp === item.ts)) return;
 
         let plain = { sender: '?', text: 'Fehler', image: null };
         
+        // A) TEXT-PAKET ENTSCHLÜSSELN
         const jsonStr = await decryptStr(item.enc, config.pass);
+        
         if(jsonStr) {
             try {
                 const content = JSON.parse(jsonStr);
                 plain.sender = content.sender;
                 plain.text = content.text;
-            } catch(e) { plain.text = "Format Fehler"; }
-        } else { return; }
+                
+                // === RETTUNG FÜR ALTE BILDER (LEGACY) ===
+                // Früher war das Bild direkt im JSON (content.image oder content.img)
+                if (!item.img && (content.image || content.img)) {
+                    plain.image = content.image || content.img;
+                }
+                // ========================================
 
+            } catch(e) { plain.text = "Format Fehler"; }
+        } else { 
+            // Wenn Entschlüsselung fehlschlägt (falsches PW?), abbrechen
+            return; 
+        }
+
+        // B) NEUES BILD-FORMAT (Separat verschlüsselter Blob)
         if (item.img) {
             let encryptedBuffer = null;
+            
+            // Fall 1: Bild kommt via URL (Live von ntfy)
             if (item.img.startsWith('http')) {
                 try {
                     const resp = await fetch(item.img);
                     encryptedBuffer = await resp.arrayBuffer();
                 } catch(e) { console.error("Live Load Error", e); }
-            } else {
+            } 
+            // Fall 2: Bild kommt als Base64-String (aus messages.json Archiv)
+            else {
                 encryptedBuffer = base64ToBuffer(item.img);
             }
 
             if (encryptedBuffer) {
+                // Den Blob entschlüsseln
                 const decryptedImageBuffer = await decryptData(encryptedBuffer, config.pass);
                 if (decryptedImageBuffer) {
                     const blob = new Blob([decryptedImageBuffer], {type: 'image/jpeg'});
@@ -494,6 +513,7 @@ let config = JSON.parse(localStorage.getItem('oma_conf_v10')) || null;
             }
         }
 
+        // C) ZUR LISTE HINZUFÜGEN
         messages.push({
             timestamp: item.ts,
             sender: plain.sender,
@@ -503,16 +523,15 @@ let config = JSON.parse(localStorage.getItem('oma_conf_v10')) || null;
         
         // Sortieren & Springen
         messages.sort((a,b) => a.timestamp - b.timestamp);
-        currentIndex = messages.length - 1;
         
-        // HIER IST DER TRICK:
-        // Wenn silent = true (Archiv), machen wir hier NICHTS.
-        // Wenn silent = false (Live), updaten wir sofort!
+        // Wenn wir NICHT im Silent-Modus (Archiv-Laden) sind, springen wir zur neuen Nachricht
         if (!silent) {
+            currentIndex = messages.length - 1;
             updateDisplay(); 
+            checkNewMessage(item.ts); // Alarm auslösen
         }
-        checkNewMessage(item.ts);
     }
+    
     
     async function decryptStr(base64Data, password) {
         try {
