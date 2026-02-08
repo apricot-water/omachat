@@ -328,10 +328,25 @@
                 <img id="stockImagePreview" class="media-preview-img">
                 <input type="file" id="stockFileInput" accept="image/*" style="display:none" onchange="previewStockFile()">
             </div>
+
+<!-- NEU: TRENNLINIE & LISTE -->
+<hr style="border:0; border-top:1px solid var(--input-bg); margin: 30px 0;">
+
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+    <div style="font-weight:bold; font-size:18px;">📦 Inhalt prüfen</div>
+    <button onclick="loadStockData()" style="font-size:14px; background:none; border:none; color:var(--accent); cursor:pointer; font-weight:600;">↻ Laden</button>
+</div>
+
+<div id="stockList" style="display:flex; flex-direction:column; gap:15px; padding-bottom:50px;">
+    <div style="text-align:center; color:var(--text-sub); padding:20px; font-size:13px;">
+        Klicke auf "Laden", um den GitHub-Vorrat zu öffnen.
+    </div>
+</div>
         </div>
         <div class="bottom-bar">
             <button id="btnStock" class="btn-primary" style="background: linear-gradient(135deg, #ffcc00, #ff9500); color:black;" onclick="saveToStock()">In den Vorrat legen 📥</button>
         </div>
+        
     </div>
 
     <!-- TAB: VIEWER -->
@@ -1963,6 +1978,177 @@ function bufferToBase64Async(buffer) {
     });
 }
 
+// === VORRAT LISTE & DELETE ===
+
+async function loadStockData() {
+    const list = document.getElementById('stockList');
+    list.innerHTML = '<div style="text-align:center; padding:20px;">⏳ Lade Vorrat von GitHub...</div>';
+
+    if(!conf.gu || !conf.gr || !conf.gt) {
+        list.innerHTML = '<div style="color:var(--danger)">Keine GitHub Config!</div>';
+        return;
+    }
+
+    try {
+        // 1. Datei von GitHub holen
+        const url = `https://api.github.com/repos/${conf.gu}/${conf.gr}/contents/vorrat.json?t=${Date.now()}`;
+        const header = { 'Authorization': `Bearer ${conf.gt}`, 'Accept': 'application/vnd.github.v3+json' };
+        
+        const resp = await fetch(url, { headers: header });
+        if(!resp.ok) throw new Error("Vorrat ist leer oder nicht erreichbar.");
+        
+        const fileData = await resp.json();
+        
+        // Content decodieren (GitHub API)
+        let rawB64 = fileData.content;
+        if(!rawB64 && fileData.sha) {
+             const blobResp = await fetch(`https://api.github.com/repos/${conf.gu}/${conf.gr}/git/blobs/${fileData.sha}`, { headers: header });
+             if(blobResp.ok) {
+                 const blobData = await blobResp.json();
+                 rawB64 = blobData.content;
+             }
+        }
+        
+        if(!rawB64) {
+            list.innerHTML = "Vorrat ist leer.";
+            return;
+        }
+
+        const rawContent = rawB64.replace(/\s/g, '');
+        const stockArray = JSON.parse(decodeURIComponent(escape(atob(rawContent))));
+
+        // 2. Liste leeren und neu aufbauen
+        list.innerHTML = "";
+        
+        if(stockArray.length === 0) {
+            list.innerHTML = '<div style="text-align:center; padding:20px;">Der Vorrat ist leer 📭</div>';
+            return;
+        }
+
+        // Neueste zuerst
+        stockArray.reverse();
+
+        for (let item of stockArray) {
+            // Container bauen
+            const itemDiv = document.createElement('div');
+            itemDiv.style.cssText = "background:var(--bg-card); border:1px solid var(--input-bg); border-radius:12px; padding:10px; display:flex; gap:10px; align-items:start;";
+            
+            // A. Text entschlüsseln
+            let textContent = "⏳ Entschlüssele...";
+            let senderName = "?";
+            let dateStr = new Date(item.added_at || Date.now()).toLocaleDateString();
+
+            try {
+                const jsonStr = await decryptText(item.enc, conf.p);
+                if(jsonStr) {
+                    const data = JSON.parse(jsonStr);
+                    textContent = data.text || "(Nur Bild)";
+                    senderName = data.sender || "?";
+                    // Falls Timestamp im Payload ist, nimm den
+                    if(data.timestamp) dateStr = new Date(data.timestamp).toLocaleString();
+                } else {
+                    textContent = "⚠️ Passwort falsch";
+                }
+            } catch(e) { textContent = "Fehler: " + e.message; }
+
+            // B. Bild entschlüsseln (falls vorhanden)
+            let imgHtml = "";
+            if (item.img) {
+                try {
+                    // Base64 String -> ArrayBuffer
+                    const encBuf = base64ToBuffer(item.img);
+                    // Decrypt
+                    const decBuf = await decryptData(encBuf, conf.p);
+                    if(decBuf) {
+                        const blob = new Blob([decBuf], {type: 'image/jpeg'});
+                        const imgUrl = URL.createObjectURL(blob);
+                        imgHtml = `<img src="${imgUrl}" style="width:80px; height:80px; object-fit:cover; border-radius:8px; background:#000;">`;
+                    } else {
+                        imgHtml = `<div style="width:80px; height:80px; background:#333; color:#fff; display:flex; align-items:center; justify-content:center; font-size:10px; border-radius:8px;">Fehler</div>`;
+                    }
+                } catch(e) {
+                    imgHtml = `<div style="width:80px; height:80px; background:var(--danger); border-radius:8px;"></div>`;
+                }
+            } else {
+                // Platzhalter wenn kein Bild
+                imgHtml = `<div style="width:80px; height:80px; background:var(--input-bg); display:flex; align-items:center; justify-content:center; border-radius:8px; font-size:20px;">📝</div>`;
+            }
+
+            // HTML zusammensetzen
+            itemDiv.innerHTML = `
+                ${imgHtml}
+                <div style="flex:1; overflow:hidden;">
+                    <div style="font-size:12px; color:var(--text-sub); margin-bottom:4px;">
+                        ${dateStr} • Von <b>${senderName}</b>
+                    </div>
+                    <div style="font-size:14px; word-break:break-word; max-height:60px; overflow:hidden;">
+                        ${textContent}
+                    </div>
+                </div>
+                <button onclick="deleteFromStock(${item.added_at})" style="background:rgba(255,59,48,0.1); color:var(--danger); border:none; width:40px; height:40px; border-radius:8px; cursor:pointer; font-size:18px; display:flex; align-items:center; justify-content:center;">
+                    🗑️
+                </button>
+            `;
+            
+            list.appendChild(itemDiv);
+        }
+
+    } catch(e) {
+        list.innerHTML = `<div style="color:var(--danger); text-align:center;">Fehler beim Laden:<br>${e.message}</div>`;
+        console.error(e);
+    }
+}
+
+async function deleteFromStock(ts) {
+    if(!confirm("Diesen Eintrag wirklich aus dem Vorrat löschen?")) return;
+
+    const list = document.getElementById('stockList');
+    // Kurzes Feedback
+    list.style.opacity = "0.5";
+    
+    try {
+        // 1. Aktuellen Stand laden (damit wir nichts überschreiben)
+        const url = `https://api.github.com/repos/${conf.gu}/${conf.gr}/contents/vorrat.json`;
+        const header = { 'Authorization': `Bearer ${conf.gt}`, 'Accept': 'application/vnd.github.v3+json' };
+        
+        const resp = await fetch(url, { headers: header, cache: "no-store" });
+        if(!resp.ok) throw new Error("Konnte Vorrat nicht laden");
+        
+        const fileData = await resp.json();
+        const rawContent = fileData.content.replace(/\s/g, '');
+        let stockArray = JSON.parse(decodeURIComponent(escape(atob(rawContent))));
+
+        // 2. Filtern (Alles behalten, was NICHT diesen Timestamp hat)
+        // Wir nutzen added_at als ID, da das eindeutig ist
+        const newArray = stockArray.filter(item => item.added_at !== ts);
+
+        // 3. Speichern
+        const newContent = btoa(unescape(encodeURIComponent(JSON.stringify(newArray))));
+        
+        const putResp = await fetch(url, {
+            method: 'PUT',
+            headers: { 'Authorization': `Bearer ${conf.gt}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                message: "Delete item from stock 🗑️",
+                content: newContent,
+                sha: fileData.sha
+            })
+        });
+
+        if(!putResp.ok) throw new Error("Löschen fehlgeschlagen");
+
+        // 4. UI neu laden
+        alert("Gelöscht!");
+        list.style.opacity = "1";
+        loadStockData(); // Liste neu aufbauen
+
+    } catch(e) {
+        alert("Fehler: " + e.message);
+        list.style.opacity = "1";
+    }
+}
+
+    
     
     // Tour initialisieren (ganz am Ende starten)
     tour.init();
