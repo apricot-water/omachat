@@ -449,20 +449,19 @@ let config = JSON.parse(localStorage.getItem('oma_conf_v10')) || null;
         for (let i = 0; i < len; i++) bytes[i] = bin.charCodeAt(i);
         return bytes.buffer;
     }
+    
 async function processAndAdd(item, silent = false) {
-        // 1. TIMESTAMP NORMALISIEREN (Fix für Duplikate)
-        // Wir rechnen alles auf Millisekunden hoch, falls es Sekunden sind
+        // 1. TIMESTAMP NORMALISIEREN
         let safeTs = item.ts;
         if (safeTs < 100000000000) safeTs *= 1000;
         
-        // 2. ZOMBIE & BLACKLIST CHECK
+        // 2. ZOMBIE CHECK
         if (item.hidden || hiddenRegistry.has(safeTs)) {
             hiddenRegistry.add(safeTs); 
             return; 
         }
         
-        // 3. DUPLIKAT CHECK (Tolerant)
-        // Prüfen, ob wir diese Nachricht schon haben (Toleranz 1 Sekunde)
+        // 3. DUPLIKAT CHECK
         const exists = messages.some(m => Math.abs(m.timestamp - safeTs) < 2000);
         if (exists) return;
 
@@ -477,16 +476,11 @@ async function processAndAdd(item, silent = false) {
                 const content = JSON.parse(jsonStr);
                 plain.sender = content.sender;
                 plain.text = content.text;
-                
-                // === FIX: ALTE BILDER RETTEN ===
-                // Früher war das Bild direkt im Text-JSON
-                if (content.image || content.img) {
-                    plain.image = content.image || content.img;
-                }
+                if (content.image || content.img) plain.image = content.image || content.img;
             } catch(e) { plain.text = "Format Fehler"; }
         } else { return; }
 
-        // 5. NEUES BILD FORMAT LADEN (Überschreibt altes, falls vorhanden)
+        // 5. BILD LADEN
         if (item.img) {
             let encryptedBuffer = null;
             if (item.img.startsWith('http')) {
@@ -508,23 +502,23 @@ async function processAndAdd(item, silent = false) {
         }
 
         messages.push({
-            timestamp: safeTs, // Wir speichern den sicheren MS-Timestamp
+            timestamp: safeTs,
             sender: plain.sender,
             text: plain.text,
             image: plain.image
         });
         
-        // Sortieren & Anzeigen
-        messages.sort((a,b) => a.timestamp - b.timestamp);
+        // === HIER IST DIE ÄNDERUNG: NEUESTE ZUERST ===
+        // b.timestamp - a.timestamp sorgt für absteigende Sortierung (Neu -> Alt)
+        messages.sort((a,b) => b.timestamp - a.timestamp);
         
         if (!silent) {
-            currentIndex = messages.length - 1;
+            // Bei neuer Nachricht: Springe immer auf Index 0 (das ist jetzt die Neueste!)
+            currentIndex = 0; 
             updateDisplay(); 
             checkNewMessage(safeTs);
         }
-    }
-
-    
+    }   
     
     
     async function decryptStr(base64Data, password) {
@@ -647,7 +641,7 @@ async function processAndAdd(item, silent = false) {
         startConnectionWatchdog(); // <--- DIESE ZEILE IST WICHTIG!
     }
 
-  async function loadGitHubArchive() {
+async function loadGitHubArchive() {
         log("Lade GitHub Archiv...");
         try {
             const timeParam = new Date().getTime();
@@ -666,16 +660,17 @@ async function processAndAdd(item, silent = false) {
                     for(let item of archiveData) {
                         if(item.hidden) hiddenRegistry.add(item.timestamp);
                         
-                        // WICHTIG: Hier übergeben wir 'true' -> "Bitte leise laden"
                         await processAndAdd({
                             ts: item.timestamp,
                             enc: item.enc,
                             img: item.img,
                             hidden: item.hidden 
-                        }, true); 
+                        }, true); // Silent = true
                     }
                     
-                    // JETZT ERST updaten wir das Display (und senden 1 Log für das neuste Bild)
+                    // === HIER DIE ÄNDERUNG ===
+                    // Nach dem Laden setzen wir den Index auf 0 (die Neueste)
+                    currentIndex = 0;
                     updateDisplay();
                 }
             } else { log("Archiv leer/Fehler."); }
