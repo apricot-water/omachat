@@ -449,23 +449,27 @@ let config = JSON.parse(localStorage.getItem('oma_conf_v10')) || null;
         for (let i = 0; i < len; i++) bytes[i] = bin.charCodeAt(i);
         return bytes.buffer;
     }
-
-    // === PROCESS AND ADD (UPDATED) ===
 async function processAndAdd(item, silent = false) {
-        // 1. ZOMBIE & BLACKLIST CHECK
-        if (item.hidden || hiddenRegistry.has(item.ts)) {
-            hiddenRegistry.add(item.ts); 
+        // 1. TIMESTAMP NORMALISIEREN (Fix für Duplikate)
+        // Wir rechnen alles auf Millisekunden hoch, falls es Sekunden sind
+        let safeTs = item.ts;
+        if (safeTs < 100000000000) safeTs *= 1000;
+        
+        // 2. ZOMBIE & BLACKLIST CHECK
+        if (item.hidden || hiddenRegistry.has(safeTs)) {
+            hiddenRegistry.add(safeTs); 
             return; 
         }
         
-        // 2. Validierung
-        if (!item.enc) return;
-        // Verhindern, dass Nachrichten doppelt hinzugefügt werden
-        if (messages.some(m => m.timestamp === item.ts)) return;
+        // 3. DUPLIKAT CHECK (Tolerant)
+        // Prüfen, ob wir diese Nachricht schon haben (Toleranz 1 Sekunde)
+        const exists = messages.some(m => Math.abs(m.timestamp - safeTs) < 2000);
+        if (exists) return;
 
         let plain = { sender: '?', text: 'Fehler', image: null };
         
-        // A) TEXT-PAKET ENTSCHLÜSSELN
+        // 4. INHALT ENTSCHLÜSSELN
+        if (!item.enc) return;
         const jsonStr = await decryptStr(item.enc, config.pass);
         
         if(jsonStr) {
@@ -474,37 +478,27 @@ async function processAndAdd(item, silent = false) {
                 plain.sender = content.sender;
                 plain.text = content.text;
                 
-                // === RETTUNG FÜR ALTE BILDER (LEGACY) ===
-                // Früher war das Bild direkt im JSON (content.image oder content.img)
-                if (!item.img && (content.image || content.img)) {
+                // === FIX: ALTE BILDER RETTEN ===
+                // Früher war das Bild direkt im Text-JSON
+                if (content.image || content.img) {
                     plain.image = content.image || content.img;
                 }
-                // ========================================
-
             } catch(e) { plain.text = "Format Fehler"; }
-        } else { 
-            // Wenn Entschlüsselung fehlschlägt (falsches PW?), abbrechen
-            return; 
-        }
+        } else { return; }
 
-        // B) NEUES BILD-FORMAT (Separat verschlüsselter Blob)
+        // 5. NEUES BILD FORMAT LADEN (Überschreibt altes, falls vorhanden)
         if (item.img) {
             let encryptedBuffer = null;
-            
-            // Fall 1: Bild kommt via URL (Live von ntfy)
             if (item.img.startsWith('http')) {
                 try {
                     const resp = await fetch(item.img);
                     encryptedBuffer = await resp.arrayBuffer();
-                } catch(e) { console.error("Live Load Error", e); }
-            } 
-            // Fall 2: Bild kommt als Base64-String (aus messages.json Archiv)
-            else {
+                } catch(e) {}
+            } else {
                 encryptedBuffer = base64ToBuffer(item.img);
             }
 
             if (encryptedBuffer) {
-                // Den Blob entschlüsseln
                 const decryptedImageBuffer = await decryptData(encryptedBuffer, config.pass);
                 if (decryptedImageBuffer) {
                     const blob = new Blob([decryptedImageBuffer], {type: 'image/jpeg'});
@@ -513,24 +507,24 @@ async function processAndAdd(item, silent = false) {
             }
         }
 
-        // C) ZUR LISTE HINZUFÜGEN
         messages.push({
-            timestamp: item.ts,
+            timestamp: safeTs, // Wir speichern den sicheren MS-Timestamp
             sender: plain.sender,
             text: plain.text,
             image: plain.image
         });
         
-        // Sortieren & Springen
+        // Sortieren & Anzeigen
         messages.sort((a,b) => a.timestamp - b.timestamp);
         
-        // Wenn wir NICHT im Silent-Modus (Archiv-Laden) sind, springen wir zur neuen Nachricht
         if (!silent) {
             currentIndex = messages.length - 1;
             updateDisplay(); 
-            checkNewMessage(item.ts); // Alarm auslösen
+            checkNewMessage(safeTs);
         }
     }
+
+    
     
     
     async function decryptStr(base64Data, password) {
