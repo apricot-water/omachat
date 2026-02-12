@@ -720,6 +720,7 @@ async function processAndAdd(item, silent = false) {
         await loadGitHubArchive();
         connectNtfy();
         startConnectionWatchdog(); // <--- DIESE ZEILE IST WICHTIG!
+        startDailyReloadTask(); 
     }
 
 async function loadGitHubArchive() {
@@ -889,6 +890,14 @@ async function loadGitHubArchive() {
                         return;
                     }
 
+                    // --- NEUSTART ZEIT ---
+                    if (cmdData.cmd === 'CONFIG_RESTART') {
+                        uiConf.restartTime = cmdData.time;
+                        localStorage.setItem('oma_ui_settings', JSON.stringify(uiConf));
+                        log(`Neustart-Zeit geändert auf: ${cmdData.time}`);
+                        return;
+                    }
+
                 } catch(err) { /* Kein JSON-Command -> Normale Nachricht, Fehler ignorieren */ }
 
                 // === 3. NORMALE NACHRICHT ===
@@ -953,7 +962,8 @@ async function loadGitHubArchive() {
         zoomTime: 10,
         nightStart: "22:00", 
         nightEnd: "08:00",
-        screensaverMin: 20 // NEU: Minuten bis dunkel (0=aus)
+        screensaverMin: 20,
+        restartTime: "04:00" // NEU: Minuten bis dunkel (0=aus)
     }; 
     
     let clickCnt = 0;
@@ -1428,7 +1438,63 @@ function checkNightMode() {
 
         smartLog(msg);
     };
+    
+// === 4. AUTOMATISCHER REFRESH (DYNAMISCH) ===
+    function startDailyReloadTask() {
+        // Prüft jede Minute
+        setInterval(() => {
+            if (!uiConf.restartTime) return;
 
+            const now = new Date();
+            const [targetH, targetM] = uiConf.restartTime.split(':').map(Number);
+
+            // Stimmen Stunde und Minute überein?
+            if (now.getHours() === targetH && now.getMinutes() === targetM) {
+                
+                // Schutz: Haben wir heute schon neu gestartet?
+                const today = now.toDateString();
+                const last = localStorage.getItem('oma_last_refresh');
+
+                if (last !== today) {
+                    console.log(`Zeit für Neustart (${uiConf.restartTime}) -> Reload!`);
+                    localStorage.setItem('oma_last_refresh', today);
+                    // Reload erzwingen (Cache ignorieren)
+                    location.reload(true); 
+                }
+            }
+        }, 60000); // Check alle 60 Sekunden
+    }
+
+    // === 5. SWIPE GESTEN (Wischen) ===
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let touchEndX = 0;
+    let touchEndY = 0;
+
+    document.addEventListener('touchstart', e => {
+        touchStartX = e.changedTouches[0].screenX;
+        touchStartY = e.changedTouches[0].screenY;
+    }, {passive: true});
+
+    document.addEventListener('touchend', e => {
+        touchEndX = e.changedTouches[0].screenX;
+        touchEndY = e.changedTouches[0].screenY;
+        handleGesture();
+    }, {passive: true});
+
+    function handleGesture() {
+        const xDiff = touchStartX - touchEndX;
+        const yDiff = Math.abs(touchStartY - touchEndY);
+        
+        // Toleranz: Wenn Oma vertikal scrollt (Text lesen), nicht blättern
+        if (yDiff > 100) return;
+
+        // Mindestens 50px wischen
+        if (Math.abs(xDiff) > 50) {
+            if (xDiff > 0) nextMsg(); // Wisch nach Links -> Weiter
+            else prevMsg();           // Wisch nach Rechts -> Zurück
+        }
+    }
     
 </script>
 </body>
