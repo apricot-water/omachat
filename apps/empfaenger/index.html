@@ -1439,31 +1439,42 @@ function checkNightMode() {
         smartLog(msg);
     };
     
-// === 4. AUTOMATISCHER REFRESH (DYNAMISCH) ===
-    function startDailyReloadTask() {
-        // Prüft jede Minute
-        setInterval(() => {
-            if (!uiConf.restartTime) return;
+// === 4. AUTOMATISCHER REFRESH (STRIKT & EINFACH) ===
+function startDailyReloadTask() {
+    // Wir prüfen alle 5 Sekunden, um die Minute sicher zu treffen
+    setInterval(() => {
+        // 1. Config Wert nehmen (z.B. "04:00" oder "19:00")
+        // Dieser Wert kommt direkt aus deinem uiConf (das im LocalStorage gespeichert ist)
+        const planTime = uiConf.restartTime; 
+        if (!planTime) return;
 
-            const now = new Date();
-            const [targetH, targetM] = uiConf.restartTime.split(':').map(Number);
+        // 2. Aktuelle Zeit als String bauen ("HH:MM")
+        const now = new Date();
+        const h = String(now.getHours()).padStart(2, '0');
+        const m = String(now.getMinutes()).padStart(2, '0');
+        const currentTime = `${h}:${m}`;
 
-            // Stimmen Stunde und Minute überein?
-            if (now.getHours() === targetH && now.getMinutes() === targetM) {
+        // 3. Strikter Vergleich: Ist JETZT die eingestellte Zeit?
+        if (currentTime === planTime) {
+            
+            // Schutz vor Endlos-Schleife in dieser einen Minute:
+            // Wir schauen in den Session-Speicher (der überlebt den Reload kurz), 
+            // ob wir genau für DIESE Zeit ("19:00") schon den Befehl hatten.
+            const lastDone = sessionStorage.getItem('last_reload_time');
+
+            if (lastDone !== currentTime) {
+                console.log(`Es ist ${currentTime} -> Neustart wird ausgeführt!`);
                 
-                // Schutz: Haben wir heute schon neu gestartet?
-                const today = now.toDateString();
-                const last = localStorage.getItem('oma_last_refresh');
-
-                if (last !== today) {
-                    console.log(`Zeit für Neustart (${uiConf.restartTime}) -> Reload!`);
-                    localStorage.setItem('oma_last_refresh', today);
-                    // Reload erzwingen (Cache ignorieren)
-                    location.reload(true); 
-                }
+                // Sofort markieren: "Für 19:00 Uhr erledigt"
+                sessionStorage.setItem('last_reload_time', currentTime);
+                
+                // Hart neu laden
+                location.reload(true);
             }
-        }, 60000); // Check alle 60 Sekunden
-    }
+        }
+    }, 5000); // Check alle 5 Sekunden
+}
+        
 
     // === 5. SWIPE GESTEN (Wischen) ===
     let touchStartX = 0;
