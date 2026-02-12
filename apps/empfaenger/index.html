@@ -385,9 +385,22 @@
         animation: pulseBorder 3s infinite;
     }
 
+
+    
+
     /* TYPOGRAPHIE SCREENSAVER */
     .slot-name { font-size: 3.5vh; font-weight: 900; color: #fff; text-transform: uppercase; letter-spacing: 1px; }
-    .slot-time { font-size: 2.5vh; font-weight: bold; color: #888; background: #111; padding: 5px 15px; border-radius: 20px; margin-top: 5px; }
+/* WETTER ZEIT BUBBLES - Optimiert */
+    .slot-time {
+        font-size: 3.2vh;      /* Deutlich größer (vorher 2.5vh) */
+        font-weight: bold;
+        color: #ffffff;        /* Weiß statt Grau */
+        background: #333;      /* Hintergrund etwas heller als die Karte */
+        padding: 8px 18px;     /* Mehr Polsterung */
+        border-radius: 30px;
+        margin-top: 8px;
+        border: 1px solid #444; /* Feiner Rand für Definition */
+    }
     .slot-icon { font-size: 10vh; margin: 1vh 0; }
     .slot-temp { font-size: 7vh; font-weight: bold; color: white; }
     .slot-rain { font-size: 2.5vh; font-weight: bold; color: #4aa3df; display: flex; align-items: center; gap: 5px; }
@@ -497,6 +510,15 @@
         <input type="number" id="numSaverTime" min="0" max="120" style="width:60px; padding:5px; text-align:center;">
     </div>
     <div style="font-size:10px; color:#666; text-align:right; margin-top:-5px;">(0 = Deaktiviert)</div> 
+        <!-- ... vorheriger Code (Screensaver input) ... -->
+    
+    <div class="setting-row">
+        <label>Täglicher Neustart (Uhrzeit):</label>
+        <!-- type="time" macht automatisch eine Uhrzeit-Auswahl -->
+        <input type="time" id="inputRestartTime" style="padding:5px; background:#333; color:white; border:1px solid #555; border-radius:5px;">
+    </div>
+
+    <!-- ... nachfolgender Code (Device ID) ... -->
 <!-- NEU: Device ID Editor -->
         <div style="border-top: 1px solid #444; margin: 15px 0; padding-top: 10px;">
             <label style="display:block; margin-bottom:5px; color:var(--accent);">Geräte-ID (Name):</label>
@@ -1144,6 +1166,10 @@ function goDark() {
         // Zoom & Screensaver Einstellungen laden
         document.getElementById('checkZoom').checked = uiConf.zoomActive;
         document.getElementById('numZoomTime').value = uiConf.zoomTime || 10;
+
+        // Automatischer Restart-Zeit
+        document.getElementById('inputRestartTime').value = uiConf.restartTime || "04:00";
+
         
         // NEU: Screensaver Feld füllen (falls vorhanden)
         const saverInput = document.getElementById('numSaverTime');
@@ -1172,6 +1198,7 @@ function goDark() {
             uiConf.imgSize = document.getElementById('rangeImg').value;
             uiConf.zoomActive = document.getElementById('checkZoom').checked;
             uiConf.zoomTime = parseInt(document.getElementById('numZoomTime').value) || 10;
+            uiConf.restartTime = document.getElementById('inputRestartTime').value;
             
             // NEU: Screensaver speichern
             const saverVal = document.getElementById('numSaverTime');
