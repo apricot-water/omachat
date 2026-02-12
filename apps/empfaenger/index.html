@@ -23,103 +23,49 @@
         user-select: text; 
     }
     body { margin: 0; padding: 0; background-color: var(--bg); color: var(--text); font-family: sans-serif; overflow: hidden; height: 100vh; width: 100vw; display: flex; flex-direction: column; }
-
-/* === NEUER HEADER & BUTTONS === */
-    #headerContainer {
-        height: 80px; width: 100%;
-        display: flex; align-items: center; justify-content: space-between;
-        padding: 0 20px; z-index: 20;
-        background: rgba(0,0,0,0.4); backdrop-filter: blur(5px);
-        position: relative;
-    }
-
-    #playBtn {
-        background: var(--accent); color: #000;
-        border: none; border-radius: 30px;
-        padding: 10px 30px; margin: 0 auto; /* Zentriert */
-        font-size: 2.2vh; font-weight: bold;
-        box-shadow: 0 0 15px rgba(76, 209, 55, 0.4);
-        cursor: pointer; display: flex; align-items: center; gap: 10px;
-        transition: transform 0.1s, background 0.3s;
-    }
-    #playBtn:active { transform: scale(0.95); }
-    #playBtn.stop-mode { background: #ff4757; color: white; box-shadow: 0 0 15px rgba(255, 71, 87, 0.4); }
-
-    /* === LEBENDIGER HINTERGRUND === */
-    #ambientBg {
-        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-        background-size: cover; background-position: center;
-        filter: blur(50px) brightness(0.4); /* Stark unscharf & dunkel */
-        z-index: 0; transition: background-image 1s ease;
-    }
-
-    /* === HAUPT DISPLAY (KARTEN DESIGN) === */
-    #displayArea { 
-        flex: 1; z-index: 10;
-        display: flex; align-items: center; justify-content: center;
-        padding: 20px; position: relative;
-    }
-
-    .card {
-        background: #1a1a1a;
-        border-radius: 20px;
-        box-shadow: 0 30px 60px rgba(0,0,0,0.8);
-        width: 100%; max-width: 1000px;
-        max-height: 85vh;
-        display: flex; overflow: hidden;
-        transition: opacity 0.3s ease;
-    }
-
-    /* TABLET LOGIK: HOCH VS QUER */
-    @media (orientation: landscape) {
-        .card { flex-direction: row; }
-        .card-img-area { width: 55%; height: 100%; }
-        .card-text-area { width: 45%; height: 100%; border-left: 1px solid #333; }
-    }
-    @media (orientation: portrait) {
-        .card { flex-direction: column; }
-        .card-img-area { width: 100%; height: 50%; }
-        .card-text-area { width: 100%; height: 50%; border-top: 1px solid #333; }
-    }
-
-    .card-img-area {
-        background: #000; position: relative;
-        display: flex; align-items: center; justify-content: center;
-    }
-    #cardImg {
-        max-width: 100%; max-height: 100%;
-        object-fit: contain; display: none;
-    }
-
-    .card-text-area {
-        padding: 30px;
-        display: flex; flex-direction: column;
-        justify-content: flex-start;
-    }
-
-    /* SMART DATE & TEXT */
-    #smartDate {
-        color: var(--accent); font-size: 2vh; 
-        font-weight: bold; text-transform: uppercase; 
-        margin-bottom: 15px; letter-spacing: 1px;
-    }
-    #messageText {
-        font-size: 3.5vh; line-height: 1.4; color: #fff;
-        font-weight: normal; overflow-y: auto; flex: 1;
-        white-space: pre-wrap; font-family: sans-serif;
-    }
-
-    /* NAV PFEILE (NEU & GROSS) */
-    .nav-zone {
-        position: absolute; top: 0; bottom: 0; width: 120px;
-        display: flex; align-items: center; justify-content: center;
-        font-size: 80px; color: rgba(255,255,255,0.2);
-        cursor: pointer; z-index: 50; transition: all 0.2s;
-    }
-    .nav-zone:active { color: white; transform: scale(1.1); }
-    #btnPrev { left: 0; justify-content: flex-start; padding-left: 20px; }
-    #btnNext { right: 0; justify-content: flex-end; padding-right: 20px; }
     
+    /* HEADER */
+    #metaInfo { height: 60px; width: 100%; background: #111; border-bottom: 1px solid #333; display: flex; align-items: center; justify-content: center; font-size: 2.5vh; color: #888; flex-shrink: 0; z-index: 5; }
+    
+    /* MAIN DISPLAY */
+    #displayArea { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; text-align: center; overflow: hidden; position: relative; }
+    #messageText { font-size: 3vh; line-height: 1.2; font-weight: bold; word-wrap: break-word; max-height: 100%; overflow-y: auto; width: 100%; }
+    #messageImg { max-width: 100%; max-height: 40vh; object-fit: contain; border-radius: 20px; margin-bottom: 20px; display: none; }
+    
+    /* NAVIGATION ZONES */
+/* NAVIGATION ZONES (Oma-freundlich & Oben) */
+    .nav-zone { 
+        position: fixed; 
+        top: 70px;        /* Unterhalb des Headers */
+        bottom: 0; 
+        width: 15%;       /* Klickbereich am Rand */
+        z-index: 20; 
+        
+        display: flex; 
+        align-items: flex-start; /* Inhalt nach OBEN schieben */
+        justify-content: center; /* Horizontal mittig im Randbereich */
+        
+        padding-top: 15vh; /* Verschiebt den Pfeil ins obere Drittel */
+        
+        font-size: 80px;  /* Extra groß für gute Sichtbarkeit */
+        color: rgba(255, 255, 255, 0.3); /* Immer sichtbar, aber dezent transparent */
+        
+        cursor: pointer; 
+        transition: all 0.2s ease;
+        
+        /* Optional: ganz leichter Hintergrund, damit man den Klickbereich erahnt */
+        /* background: rgba(255,255,255,0.02); */
+    }
+
+    /* Beim Tippen/Klicken hell aufleuchten */
+    .nav-zone:active { 
+        color: #ffffff;             /* Wird strahlend weiß */
+        background: rgba(255,255,255,0.1); /* Hintergrund leuchtet leicht auf */
+        transform: scale(1.1);      /* Leichter Zoom-Effekt als Feedback */
+    }
+
+    #btnPrev { left: 0; } 
+    #btnNext { right: 0; }
 
     /* SETUP SCREEN */
     #setupScreen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #222; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 15px; overflow-y: auto; padding: 20px; }
@@ -384,48 +330,15 @@
         <button onclick="resetApp()" style="background:#555; font-size:14px; margin-top:0">Reset</button>
     </div>
 
-<!-- UI BEREICHE (NEU) -->
-    
-    <!-- 1. Hintergrund -->
-    <div id="ambientBg"></div>
-
-    <!-- 2. Header mit Play Button -->
-    <div id="headerContainer">
-        <!-- Links: Status -->
-        <div id="metaInfo" style="background:none; border:none; width:auto; height:auto; padding:0;">
-            <span style="font-size:1.5vh; color:#666;">Oma Display V12</span>
-        </div>
-
-        <!-- Mitte: Play Button -->
-        <button id="playBtn" onclick="toggleSlideshow()">
-            <span id="playIcon">▶</span> <span id="playText">Abspielen</span>
-        </button>
-
-        <!-- Rechts: Nichts (oder reload button) -->
-        <div style="width:50px;"></div> 
-    </div>
-
-    <!-- 3. Hauptbereich (Karte) -->
+    <!-- UI BEREICHE -->
+    <div id="metaInfo"></div>
     <div id="displayArea">
-        
-        <!-- Die Pfeile (innerhalb der Area, damit sie über der Karte liegen können) -->
-        <div id="btnPrev" class="nav-zone" onclick="prevMsg()">❮</div>
-        <div id="btnNext" class="nav-zone" onclick="nextMsg()">❯</div>
-
-        <!-- Die Karte -->
-        <div class="card">
-            <div class="card-img-area" onclick="openLightbox()">
-                <img id="cardImg" src="">
-            </div>
-            <div class="card-text-area">
-                <div id="smartDate">Lade...</div>
-                <div id="messageText">Warte auf Nachrichten...</div>
-                <!-- Kleiner Zähler unten -->
-                <div id="msgCounter" style="margin-top:auto; padding-top:15px; color:#555; font-size:1.5vh;"></div>
-            </div>
-        </div>
+        <img id="messageImg" src="" onclick="openLightbox()">
+        <div id="messageText">Lade Archiv...</div>
     </div>
-    
+    <div id="btnPrev" class="nav-zone" onclick="prevMsg()">❮</div>
+    <div id="btnNext" class="nav-zone" onclick="nextMsg()">❯</div>
+
     <!-- UI TWEAKS MODAL (Versteckt) -->
     <div id="uiTweaksModal" style="display:none;">
         <h3>Anzeige anpassen</h3>
@@ -967,7 +880,49 @@ async function loadGitHubArchive() {
         });
     }
     
+function updateDisplay() {
+        if(messages.length === 0) {
+            document.getElementById('messageText').innerText = "Warte auf Nachrichten...";
+            document.getElementById('messageImg').style.display = 'none';
+            document.getElementById('metaInfo').innerText = "";
+            return;
+        }
+        
+        const msg = messages[currentIndex];
+        const txtEl = document.getElementById('messageText');
+        const imgEl = document.getElementById('messageImg');
+        const metaEl = document.getElementById('metaInfo');
 
+        txtEl.innerText = msg.text || "";
+        
+        if(msg.image) {
+            imgEl.src = msg.image; 
+            imgEl.style.display = 'block';
+        } else {
+            imgEl.style.display = 'none';
+        }
+
+        // === HIER WAR DER FEHLER ===
+        // Vorher: new Date(msg.timestamp * 1000); 
+        // Jetzt: Kein Malnehmen mehr, da wir das schon beim Laden gefixt haben!
+        const dateObj = new Date(msg.timestamp); 
+        // ===========================
+
+        const dateStr = dateObj.toLocaleDateString([], {day:'2-digit', month:'2-digit'});
+        const timeStr = dateObj.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+        const counterStr = `Nachricht ${currentIndex + 1} von ${messages.length}`;
+
+        // HTML: Jetzt 3 Zeilen untereinander
+        metaEl.innerHTML = `
+            <div class="meta-sender">${msg.sender}</div>
+            <div class="meta-details">
+                <span style="font-weight:bold; font-size:1.3em;">${timeStr} Uhr</span>
+                <span style="color:#ddd;">${dateStr}</span>
+                <span style="color:#888; font-size:0.9em; margin-top:2px;">${counterStr}</span>
+            </div>
+        `;
+        smartLog(msg);
+    }
     
     // Navigation
     window.nextMsg = function() { if(currentIndex < messages.length - 1) { currentIndex++; updateDisplay(); } };
@@ -1354,109 +1309,6 @@ function checkNightMode() {
         }
     }
 
-    // === NEUE FUNKTIONEN (V12) ===
-
-// 1. Slideshow Logik
-let slideshowInterval = null;
-
-function toggleSlideshow() {
-    const btn = document.getElementById('playBtn');
-    const icon = document.getElementById('playIcon');
-    const text = document.getElementById('playText');
-
-    if (slideshowInterval) {
-        // STOPPEN
-        clearInterval(slideshowInterval);
-        slideshowInterval = null;
-        btn.classList.remove('stop-mode');
-        icon.innerText = "▶"; text.innerText = "Abspielen";
-    } else {
-        // STARTEN
-        if(messages.length === 0) return;
-        currentIndex = 0; // Reset zum Anfang (Neueste)
-        updateDisplay();
-        
-        btn.classList.add('stop-mode');
-        icon.innerText = "⏹"; text.innerText = "Stop";
-
-        // Alle 8 Sekunden blättern
-        slideshowInterval = setInterval(() => {
-            if (currentIndex < messages.length - 1) {
-                currentIndex++;
-                updateDisplay();
-            } else {
-                // Ende erreicht -> Reset & Stop
-                currentIndex = 0;
-                updateDisplay();
-                toggleSlideshow();
-            }
-        }, 8000);
-    }
-}
-
-// 2. Smartes Datum (Heute/Gestern...)
-function getSmartDate(ts) {
-    const date = new Date(ts);
-    const now = new Date();
-    
-    // Nur Tage vergleichen (Uhrzeit ignorieren)
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-    const msgDay = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
-    const diffDays = Math.round((today - msgDay) / (1000 * 60 * 60 * 24));
-    
-    // Tageszeit
-    const h = date.getHours();
-    let tPart = (h < 11) ? "Morgen" : (h < 14) ? "Mittag" : (h < 18) ? "Nachmittag" : "Abend";
-
-    if(diffDays === 0) return `Heute ${tPart}`;
-    if(diffDays === 1) return `Gestern ${tPart}`;
-    if(diffDays === 2) return `Vorgestern ${tPart}`;
-    
-    // Sonst Wochentag
-    return date.toLocaleDateString('de-DE', { weekday:'long' }) + " " + tPart;
-}
-
-// 3. Das neue Update Display (ÜBERSCHREIBT das alte)
-window.updateDisplay = function() {
-    if(messages.length === 0) {
-        document.getElementById('messageText').innerText = "Warte auf Nachrichten...";
-        document.getElementById('cardImg').style.display = 'none';
-        document.getElementById('smartDate').innerText = "";
-        return;
-    }
-    
-    const msg = messages[currentIndex];
-    
-    // Text
-    document.getElementById('messageText').innerText = msg.text || "";
-    
-    // Smart Date & Absender
-    const dateStr = getSmartDate(msg.timestamp);
-    document.getElementById('smartDate').innerText = dateStr;
-    document.getElementById('msgCounter').innerText = `${msg.sender} • ${currentIndex + 1}/${messages.length}`;
-
-    // Bild handling
-    const imgEl = document.getElementById('cardImg');
-    const bgEl = document.getElementById('ambientBg');
-    
-    // Wichtig: Wir nutzen jetzt die IDs aus dem neuen HTML (cardImg)
-    if(msg.image) {
-        imgEl.src = msg.image; 
-        imgEl.style.display = 'block';
-        // Hintergrund setzen
-        bgEl.style.backgroundImage = `url('${msg.image}')`;
-        // Bild in Lightbox vorbereiten (falls du das alte Snippet noch hast)
-        const oldImg = document.getElementById('messageImg'); 
-        if(oldImg) oldImg.src = msg.image; // Kompatibilität für Lightbox
-    } else {
-        imgEl.style.display = 'none';
-        bgEl.style.backgroundImage = 'none';
-        bgEl.style.background = '#111';
-    }
-
-    // Log senden (nutzt deine existierende Funktion)
-    smartLog(msg);
-};
     
 </script>
 </body>
