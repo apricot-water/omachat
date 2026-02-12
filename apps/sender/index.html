@@ -448,6 +448,17 @@
                 </div>
                 <button class="btn-primary" onclick="sendCmd('NIGHT')" style="margin-top:10px;">Zeiten speichern</button>
             </div>
+         <!-- NEU: NEUSTART ZEIT -->
+            <div style="background:var(--input-bg); padding:15px; border-radius:12px; margin-bottom:20px;">
+                <div class="label-small" style="margin-left:0;">🔄 Täglicher Neustart</div>
+                <div style="display:flex; gap:10px; align-items:center; margin-top:5px;">
+                    <div style="flex:1">
+                        <div style="font-size:10px; color:var(--text-sub); margin-bottom:2px;">Uhrzeit</div>
+                        <input type="time" id="cmdRestartTime" value="04:00" style="background:var(--bg-card); text-align:center; min-width: 100%; border:none; padding:10px; border-radius:8px;">
+                    </div>
+                    <button class="btn-primary" onclick="sendCmd('RESTART_TIME')" style="flex:1; margin-top:14px;">Speichern</button>
+                </div>
+            </div>
             
 
         </div>
@@ -1736,6 +1747,14 @@ function startScanner() {
             payload.cmd = "CONFIG_NIGHT";
             payload.start = sVal;
             payload.end = eVal;
+        }
+
+        else if(type === 'RESTART_TIME') {
+            const timeVal = document.getElementById('cmdRestartTime').value;
+            if(!timeVal) return alert("Bitte Zeit wählen.");
+            
+            payload.cmd = "CONFIG_RESTART";
+            payload.time = timeVal;
         }
 
         // 2. Senden
