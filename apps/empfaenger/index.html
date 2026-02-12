@@ -316,28 +316,99 @@
         transition: opacity 1s ease;
     }
     
-    /* === SCREENSAVER === */
+ /* === SCREENSAVER (WETTER TIMELINE) === */
     #screensaverOverlay {
         display: none;
         position: fixed; top: 0; left: 0;
         width: 100vw; height: 100vh;
-        background: #000000; /* Tiefschwarz */
-        z-index: 1800; /* Über NightMode(1500), UNTER NewMsg(2000) */
+        background: #000000;
+        z-index: 1800; /* Über App, aber UNTER Alarm (2000) */
+        
         flex-direction: column;
-        align-items: center; 
         justify-content: center;
+        align-items: center;
         opacity: 0;
-        transition: opacity 1s ease;
+        transition: opacity 0.5s ease;
+        
+        /* Anti-Burn-In: Minimales Wackeln des gesamten Screens */
+        animation: antiBurnIn 120s infinite alternate ease-in-out;
     }
+
     #screensaverOverlay.active {
         display: flex;
-        opacity: 0.98; /* Fast komplett dunkel, 2% Restlicht damit man merkt es ist an */
+        opacity: 1; /* Jetzt voll sichtbar, da wir Inhalte haben */
     }
+
+    /* Oben: Große Uhrzeit */
+    #saverTopBar {
+        width: 90%;
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        margin-bottom: 3vh;
+        border-bottom: 2px solid #333;
+        padding-bottom: 10px;
+    }
+    #saverClock { font-size: 8vh; font-weight: bold; color: #fff; line-height: 1; }
+    #saverDate { font-size: 3vh; color: #ccc; font-weight: normal; text-transform: uppercase; }
+
+    /* Container für die 4 Karten */
+    .forecast-row {
+        display: flex;
+        flex-direction: row;
+        gap: 1.5vw;
+        width: 95%;
+        height: 55vh;
+    }
+
+    /* === DIE WETTER KARTEN === */
+    .weather-card {
+        flex: 1; 
+        background: #1a1a1a;
+        border: 2px solid #333;
+        border-radius: 15px;
+        padding: 15px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: space-around;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.8);
+    }
+
+    /* === SPEZIAL: DIE ERSTE KARTE (JETZT) === */
+    .weather-card.current {
+        background: #222;
+        border: 3px solid #4cd137; /* Grüner Rand */
+        transform: scale(1.02);
+        box-shadow: 0 0 20px rgba(76, 209, 55, 0.2);
+        z-index: 10;
+        animation: pulseBorder 3s infinite;
+    }
+
+    /* TYPOGRAPHIE SCREENSAVER */
+    .slot-name { font-size: 3.5vh; font-weight: 900; color: #fff; text-transform: uppercase; letter-spacing: 1px; }
+    .slot-time { font-size: 2.5vh; font-weight: bold; color: #888; background: #111; padding: 5px 15px; border-radius: 20px; margin-top: 5px; }
+    .slot-icon { font-size: 10vh; margin: 1vh 0; }
+    .slot-temp { font-size: 7vh; font-weight: bold; color: white; }
+    .slot-rain { font-size: 2.5vh; font-weight: bold; color: #4aa3df; display: flex; align-items: center; gap: 5px; }
+
+    /* Animationen */
+    @keyframes antiBurnIn { from { transform: translate(-5px,-5px); } to { transform: translate(5px,5px); } }
+    @keyframes pulseBorder { 0% { border-color: #4cd137; } 50% { border-color: #38ada9; } 100% { border-color: #4cd137; } }
+    
 </style>
 </head>
 <body>
-<!-- NEU: SCREENSAVER OVERLAY -->
+<!-- NEU: WETTER SCREENSAVER OVERLAY -->
     <div id="screensaverOverlay" onclick="wakeUp()">
+        <div id="saverTopBar">
+            <div id="saverClock">--:--</div>
+            <div id="saverDate">--</div>
+        </div>
+
+        <!-- Hier werden die 4 Karten per Javascript reingeneriert -->
+        <div class="forecast-row" id="forecastRow"></div>
+        
         <div style="color:#333; font-size:12px; margin-top:20px;">Tippen zum Aufwecken</div>
     </div>
     
@@ -1026,14 +1097,17 @@ async function loadGitHubArchive() {
         }
     }
 
-    function goDark() {
+function goDark() {
         // Sicherheitscheck: Nicht abdunkeln wenn Alarm an ist
         if (document.getElementById('newMsgOverlay').style.display === 'flex') return;
         
         const el = document.getElementById('screensaverOverlay');
-        if(el) el.classList.add('active');
+        if(el) {
+            el.classList.add('active');
+            renderTimeline(); // <--- DIESE ZEILE HINZUFÜGEN! Damit die Daten frisch sind beim Start
+        }
     }
-
+    
     function wakeUp() {
         const el = document.getElementById('screensaverOverlay');
         if (el && el.classList.contains('active')) {
@@ -1523,6 +1597,90 @@ function startDailyReloadTask() {
             }
         }
     }
+// ==========================================
+    // === WETTER TIMELINE LOGIK (Screensaver) ===
+    // ==========================================
+
+    const WEATHER_LABELS = {
+        2: "Nachts", 6: "Morgens", 10: "Mittags", 
+        14: "Nachm.", 18: "Abends", 22: "Spät"
+    };
+
+    // Dummy Daten (Später durch API ersetzen)
+    function getDummyData(hour) {
+        if(hour >= 22 || hour < 6) return { i: "🌙", t: "8°", r: "10%" };
+        if(hour >= 6 && hour < 10) return { i: "🌫️", t: "12°", r: "20%" };
+        if(hour >= 10 && hour < 14) return { i: "☀️", t: "22°", r: "0%" };
+        if(hour >= 14 && hour < 18) return { i: "⛅", t: "20°", r: "10%" };
+        return { i: "🌧️", t: "15°", r: "60%" };
+    }
+
+    function renderTimeline() {
+        // Nur rendern, wenn Screensaver auch sichtbar ist (spart Leistung)
+        // ODER beim ersten Start, damit was da ist.
+        const saver = document.getElementById('screensaverOverlay');
+        if (!saver.classList.contains('active') && saver.style.opacity !== '1') {
+            // Wir updaten trotzdem die Uhrzeit oben, falls er gleich anspringt
+            updateSaverClock(); 
+            return; 
+        }
+
+        const now = new Date();
+        const currentHour = now.getHours();
+
+        // 1. Startblock berechnen (Welcher 4h Block ist JETZT?)
+        let startBlock = 2;
+        if (currentHour >= 22 || currentHour < 2) startBlock = 22;
+        else if (currentHour >= 18) startBlock = 18;
+        else if (currentHour >= 14) startBlock = 14;
+        else if (currentHour >= 10) startBlock = 10;
+        else if (currentHour >= 6) startBlock = 6;
+
+        const container = document.getElementById('forecastRow');
+        container.innerHTML = ""; // Reset
+
+        // 2. 4 Karten generieren
+        for (let i = 0; i < 4; i++) {
+            let h = startBlock + (i * 4);
+            if (h >= 24) h -= 24; // Überlauf nach Mitternacht
+
+            let endH = h + 4;
+            if (endH >= 24) endH -= 24;
+            
+            const hStr = String(h).padStart(2, '0');
+            const endHStr = String(endH).padStart(2, '0');
+            const data = getDummyData(h);
+            const label = WEATHER_LABELS[h] || "Zeit";
+            
+            const div = document.createElement('div');
+            div.className = 'weather-card';
+            if (i === 0) div.classList.add('current'); // Erste Karte = Jetzt
+
+            div.innerHTML = `
+                <div class="slot-name">${label}</div>
+                <div class="slot-time">${hStr} - ${endHStr} Uhr</div>
+                <div class="slot-icon">${data.i}</div>
+                <div class="slot-temp">${data.t}</div>
+                <div class="slot-rain">💧 ${data.r}</div>
+            `;
+            container.appendChild(div);
+        }
+        updateSaverClock();
+    }
+
+    function updateSaverClock() {
+        const now = new Date();
+        const minStr = String(now.getMinutes()).padStart(2,'0');
+        const hourStr = String(now.getHours()).padStart(2,'0');
+        document.getElementById('saverClock').innerText = `${hourStr}:${minStr} Uhr`;
+        
+        const opts = { weekday: 'long', day: 'numeric', month: 'long' };
+        document.getElementById('saverDate').innerText = now.toLocaleDateString('de-DE', opts);
+    }
+
+    // Init & Interval (Jede Minute updaten)
+    setInterval(renderTimeline, 60000);
+    
 </script>
 </body>
 </html>
