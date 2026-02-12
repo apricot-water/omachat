@@ -1316,30 +1316,47 @@ function checkNightMode() {
             // Log nur lokal, um Loop zu vermeiden
         }
     }
-// === 1. SMART DATE HELFER ===
+
+    
+// === 1. SMART DATE HELFER (OMA EDITION) ===
     function getSmartDate(ts) {
         const date = new Date(ts);
         const now = new Date();
-        const diff = now.getTime() - ts;
-        const oneDay = 24 * 60 * 60 * 1000;
         
         // Uhrzeit formatieren (14:30)
         const timeStr = date.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
 
-        // Tag ermitteln
-        let dayStr = "";
-        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-        const msgDayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+        // Nur das Datum ohne Uhrzeit vergleichen
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+        const msgDay = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+        
+        // Unterschied in Tagen berechnen
+        const diffDays = Math.round((today - msgDay) / (1000 * 60 * 60 * 24));
+        
+        // Wochentag auslesen (z.B. "Montag")
+        const weekday = date.toLocaleDateString([], {weekday:'long'});
 
-        if (msgDayStart === todayStart) dayStr = "Heute";
-        else if (msgDayStart === todayStart - oneDay) dayStr = "Gestern";
-        else if (msgDayStart === todayStart - (oneDay*2)) dayStr = "Vorgestern";
-        else dayStr = date.toLocaleDateString([], {weekday:'long', day:'numeric', month:'long'});
+        let dayStr = "";
+
+        // Die Oma-Logik:
+        if (diffDays === 0) {
+            dayStr = "Heute";
+        } else if (diffDays === 1) {
+            dayStr = "Gestern";
+        } else if (diffDays === 2) {
+            dayStr = "Vorgestern";
+        } else if (diffDays < 7) {
+            // Innerhalb der letzten Woche: "Am Dienstag"
+            dayStr = "Am " + weekday;
+        } else {
+            // Älter als eine Woche: "Letzten Dienstag"
+            dayStr = "Letzten " + weekday;
+        }
 
         return { day: dayStr, time: timeStr + " Uhr" };
     }
 
-    // === 2. SLIDESHOW LOGIK ===
+    // === 2. SLIDESHOW LOGIK (Bleibt gleich) ===
     let slideTimer = null;
     function toggleSlideshow() {
         const btn = document.getElementById('playBtn');
@@ -1347,50 +1364,48 @@ function checkNightMode() {
         const icon = document.getElementById('playIcon');
 
         if (slideTimer) {
-            // STOPPEN
             clearInterval(slideTimer);
             slideTimer = null;
             btn.classList.remove('active');
             txt.innerText = "Abspielen";
             icon.innerText = "▶";
         } else {
-            // STARTEN
             if(messages.length === 0) return;
-            
-            // Zum Start springen
             currentIndex = 0;
             updateDisplay();
 
-            // UI ändern
             btn.classList.add('active');
             txt.innerText = "Stop";
             icon.innerText = "⏹";
 
-            // Loop starten (8 Sekunden)
             slideTimer = setInterval(() => {
                 if (currentIndex < messages.length - 1) {
                     currentIndex++;
                     updateDisplay();
                 } else {
-                    // Ende erreicht -> Stop
-                    toggleSlideshow();
+                    toggleSlideshow(); // Ende -> Stop
                 }
             }, 8000);
         }
     }
 
-    // === 3. UPDATE DISPLAY (Überschreibt die alte Funktion) ===
+    // === 3. UPDATE DISPLAY ===
     window.updateDisplay = function() {
         if(messages.length === 0) {
             document.getElementById('messageText').innerText = "Keine Nachrichten.";
             document.getElementById('messageImg').style.display = 'none';
+            document.getElementById('metaSender').innerText = "";
+            document.getElementById('metaTime').innerText = "";
+            document.getElementById('metaDate').innerText = "";
             return;
         }
         
         const msg = messages[currentIndex];
         
-        // Text & Bild
+        // Text setzen
         document.getElementById('messageText').innerText = msg.text || "";
+        
+        // Bild setzen
         const imgEl = document.getElementById('messageImg');
         if(msg.image) {
             imgEl.src = msg.image; 
@@ -1399,16 +1414,21 @@ function checkNightMode() {
             imgEl.style.display = 'none';
         }
 
-        // Header Infos füllen
+        // Header Infos füllen (Mit neuer Logik)
         const smart = getSmartDate(msg.timestamp);
         
+        // Zeigt "Enkel Tim"
         document.getElementById('metaSender').innerText = msg.sender;
-        document.getElementById('metaTime').innerText = smart.day;  // Oben: "Heute"
-        document.getElementById('metaDate').innerText = smart.time; // Unten: "14:00 Uhr"
+        
+        // Zeigt "Vorgestern" oder "Letzten Freitag" (Oben rechts)
+        document.getElementById('metaTime').innerText = smart.day;
+        
+        // Zeigt "14:30 Uhr" (Unten rechts, kleiner)
+        document.getElementById('metaDate').innerText = smart.time;
 
-        // Log senden (bleibt gleich)
         smartLog(msg);
     };
+
     
 </script>
 </body>
