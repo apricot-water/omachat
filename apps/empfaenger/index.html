@@ -435,31 +435,32 @@
         animation: sunSpin 20s linear infinite;
     }
 
-    /* WOLKE (Basis) */
+    /* WOLKE (Basis - jetzt hellweiß) */
     .w-cloud {
         width: 7vh; height: 3.5vh;
-        background: #ecf0f1;
+        background: #ffffff;  /* <-- HIER GEÄNDERT: Reinweiß */
         border-radius: 50px;
         position: absolute;
         top: 3vh; left: 1vh;
         z-index: 2;
-        box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        box-shadow: 0 0 10px rgba(255, 255, 255, 0.3); /* Leichtes Leuchten statt dunkler Schatten */
         animation: cloudFloat 4s ease-in-out infinite;
     }
     .w-cloud::after {
         content: ''; position: absolute;
         top: -1.5vh; left: 1vh;
         width: 3vh; height: 3vh;
-        background: #ecf0f1;
+        background: #ffffff; /* <-- Auch Weiß */
         border-radius: 50%;
     }
     .w-cloud::before {
         content: ''; position: absolute;
         top: -2.5vh; left: 3vh;
         width: 4vh; height: 4vh;
-        background: #ecf0f1;
+        background: #ffffff; /* <-- Auch Weiß */
         border-radius: 50%;
     }
+
 
     /* WOLKE + SONNE (Mix) */
     .w-partly-cloudy .w-sun {
@@ -498,31 +499,37 @@
         animation: snowFall 3s infinite linear;
     }
 
-    /* NEBEL */
+/* NEBEL (Heller) */
     .w-fog {
         width: 7vh; height: 0.8vh;
-        background: #95a5a6;
+        background: #bdc3c7; /* <-- Helles Silber statt Dunkelgrau */
         border-radius: 10px;
         position: absolute; top: 4vh; left: 1vh;
         animation: fogMove 5s infinite alternate;
-        opacity: 0.7;
+        opacity: 0.8; /* Etwas sichtbarer */
     }
     .w-fog::after {
         content: ''; position: absolute; top: 1.5vh; left: 1vh;
-        width: 5vh; height: 0.8vh; background: #95a5a6; border-radius: 10px;
+        width: 5vh; height: 0.8vh; 
+        background: #bdc3c7; /* <-- Helles Silber */
+        border-radius: 10px;
     }
 
-    /* GEWITTER */
-    .w-storm .w-cloud { background: #7f8c8d; }
-    .w-storm .w-cloud::after, .w-storm .w-cloud::before { background: #7f8c8d; }
+    /* GEWITTER (Silber statt Schwarz) */
+    .w-storm .w-cloud { 
+        background: #bdc3c7; /* <-- Helles Silber für Gewitter */
+    }
+    .w-storm .w-cloud::after, 
+    .w-storm .w-cloud::before { 
+        background: #bdc3c7; 
+    }
+    
+    /* Blitz noch etwas heller machen */
     .w-bolt {
-        position: absolute; top: 4vh; left: 3vh;
-        color: #f1c40f; font-size: 4vh; font-weight: bold;
-        z-index: 0;
-        animation: lightning 2s infinite;
-        text-shadow: 0 0 10px yellow;
+        color: #fff200; /* Knallgelb */
+        text-shadow: 0 0 15px #fff200;
     }
-
+    
     /* KEYFRAMES */
     @keyframes sunPulse { 0% { transform: scale(0.9); opacity: 0.8; } 100% { transform: scale(1.1); opacity: 1; } }
     @keyframes sunSpin { from { transform: translate(-50%, -50%) rotate(0deg); } to { transform: translate(-50%, -50%) rotate(360deg); } }
