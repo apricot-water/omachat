@@ -1887,7 +1887,7 @@ function startDailyReloadTask() {
         
         // Fallback (z.B. wenn es 1 Uhr nachts ist und wir Daten von "Gestern 22 Uhr" suchen, 
         // die API aber erst ab "Heute 00 Uhr" liefert)
-        return { i: "🌙", t: "--°", r: "--%" };
+        return { i: getWeatherAnim(3), t: "--°", r: "--%" }; // Default Wolke
     }
     // Timeline rendern (angepasst auf getRealData)
     const WEATHER_LABELS = { 2: "Nachts", 6: "Morgens", 10: "Mittags", 14: "Nachm.", 18: "Abends", 22: "Spät" };
