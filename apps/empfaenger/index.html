@@ -63,11 +63,20 @@
     .meta-time { font-size: 2.2vh; font-weight: bold; color: #fff; }
     .meta-date { font-size: 1.8vh; color: #bbb; margin-top: 2px; }
 
-    /* MAIN DISPLAY */
+
+    /* MAIN DISPLAY - PROFESSIONAL OLED LOOK */
     #displayArea { 
-        flex: 1; display: flex; flex-direction: column; 
-        align-items: center; justify-content: flex-start; /* Oben bündig */
-        padding: 20px; overflow: hidden; position: relative; 
+        flex: 1; 
+        display: flex; 
+        flex-direction: column; 
+        align-items: center;     
+        justify-content: flex-start; 
+        padding: 10px 20px;          
+        overflow: hidden; 
+        position: relative; 
+        
+        /* === HIER DIE NEUE ZEILE === */
+        touch-action: pan-y; /* Erlaubt hoch/runter Scrollen, aber überlässt links/rechts dem Skript */
     }
     
     #messageImg { 
@@ -1475,38 +1484,45 @@ function startDailyReloadTask() {
     }, 5000); // Check alle 5 Sekunden
 }
         
-
-    // === 5. SWIPE GESTEN (Wischen) ===
+// === 5. SWIPE GESTEN (Wischen) ===
     let touchStartX = 0;
     let touchStartY = 0;
-    let touchEndX = 0;
-    let touchEndY = 0;
 
+    // Startpunkt merken
     document.addEventListener('touchstart', e => {
-        touchStartX = e.changedTouches[0].screenX;
-        touchStartY = e.changedTouches[0].screenY;
+        touchStartX = e.changedTouches[0].clientX; // clientX ist präziser als screenX
+        touchStartY = e.changedTouches[0].clientY;
     }, {passive: true});
 
+    // Endpunkt auswerten
     document.addEventListener('touchend', e => {
-        touchEndX = e.changedTouches[0].screenX;
-        touchEndY = e.changedTouches[0].screenY;
-        handleGesture();
+        const touchEndX = e.changedTouches[0].clientX;
+        const touchEndY = e.changedTouches[0].clientY;
+        
+        handleGesture(touchStartX, touchStartY, touchEndX, touchEndY);
     }, {passive: true});
 
-    function handleGesture() {
-        const xDiff = touchStartX - touchEndX;
-        const yDiff = Math.abs(touchStartY - touchEndY);
+    function handleGesture(sX, sY, eX, eY) {
+        const xDiff = sX - eX;
+        const yDiff = Math.abs(sY - eY);
         
-        // Toleranz: Wenn Oma vertikal scrollt (Text lesen), nicht blättern
-        if (yDiff > 100) return;
+        // 1. Toleranz-Check:
+        // Wenn Oma versucht hat zu scrollen (mehr Bewegung hoch/runter als links/rechts),
+        // dann ignorieren wir den Swipe. Das verhindert versehentliches Blättern beim Lesen.
+        if (yDiff > Math.abs(xDiff)) return;
 
-        // Mindestens 50px wischen
+        // 2. Distanz-Check:
+        // Mindestens 50px weit gewischt?
         if (Math.abs(xDiff) > 50) {
-            if (xDiff > 0) nextMsg(); // Wisch nach Links -> Weiter
-            else prevMsg();           // Wisch nach Rechts -> Zurück
+            if (xDiff > 0) {
+                // Finger bewegte sich nach LINKS (Differenz positiv) -> Nächste Nachricht
+                nextMsg(); 
+            } else {
+                // Finger bewegte sich nach RECHTS (Differenz negativ) -> Vorherige Nachricht
+                prevMsg();           
+            }
         }
     }
-    
 </script>
 </body>
 </html>
