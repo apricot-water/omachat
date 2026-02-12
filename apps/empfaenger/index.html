@@ -518,6 +518,18 @@
         <input type="time" id="inputRestartTime" style="padding:5px; background:#333; color:white; border:1px solid #555; border-radius:5px;">
     </div>
 
+        <!-- WETTER STANDORT -->
+    <div style="border-top: 1px solid #444; margin: 15px 0; padding-top: 10px;">
+        <label style="color:var(--accent); margin-bottom:5px;">Wetter Standort (Lat / Lon):</label>
+        <div style="display:flex; gap:10px;">
+            <input type="text" id="inputLat" placeholder="52.52" style="width:50%; background:#333; color:white; border:1px solid #555; border-radius:5px;">
+            <input type="text" id="inputLon" placeholder="13.41" style="width:50%; background:#333; color:white; border:1px solid #555; border-radius:5px;">
+        </div>
+        <div style="font-size:10px; color:#888; margin-top:5px;">
+            <a href="https://www.latlong.net/" target="_blank" style="color:#888;">Koordinaten hier finden</a>
+        </div>
+    </div>
+
     <!-- ... nachfolgender Code (Device ID) ... -->
 <!-- NEU: Device ID Editor -->
         <div style="border-top: 1px solid #444; margin: 15px 0; padding-top: 10px;">
@@ -823,6 +835,7 @@ async function processAndAdd(item, silent = false) {
         connectNtfy();
         startConnectionWatchdog(); // <--- DIESE ZEILE IST WICHTIG!
         startDailyReloadTask(); 
+        fetchWeather();
     }
 
 async function loadGitHubArchive() {
@@ -1064,6 +1077,8 @@ async function loadGitHubArchive() {
         zoomTime: 10,
         nightStart: "22:00", 
         nightEnd: "08:00",
+        lat: "52.52", // Default Berlin
+        lon: "13.41",
         screensaverMin: 20,
         restartTime: "04:00" // NEU: Minuten bis dunkel (0=aus)
     }; 
@@ -1163,6 +1178,10 @@ function goDark() {
         document.getElementById('valText').innerText = uiConf.textSize;
         document.getElementById('valImg').innerText = uiConf.imgSize;
 
+        // Wohnort
+        document.getElementById('inputLat').value = uiConf.lat || "52.52";
+        document.getElementById('inputLon').value = uiConf.lon || "13.41";
+
         // Zoom & Screensaver Einstellungen laden
         document.getElementById('checkZoom').checked = uiConf.zoomActive;
         document.getElementById('numZoomTime').value = uiConf.zoomTime || 10;
@@ -1199,6 +1218,14 @@ function goDark() {
             uiConf.zoomActive = document.getElementById('checkZoom').checked;
             uiConf.zoomTime = parseInt(document.getElementById('numZoomTime').value) || 10;
             uiConf.restartTime = document.getElementById('inputRestartTime').value;
+
+            uiConf.lat = document.getElementById('inputLat').value;
+            uiConf.lon = document.getElementById('inputLon').value;
+            
+            localStorage.setItem('oma_ui_settings', JSON.stringify(uiConf));
+            
+            // Wetter sofort neu laden mit neuen Koordinaten
+            fetchWeather(); 
             
             // NEU: Screensaver speichern
             const saverVal = document.getElementById('numSaverTime');
@@ -1625,37 +1652,141 @@ function startDailyReloadTask() {
         }
     }
 // ==========================================
-    // === WETTER TIMELINE LOGIK (Screensaver) ===
+    // === ECHTE WETTER DATEN (OPEN-METEO) ===
     // ==========================================
+    
+    let weatherCache = null; // Hier speichern wir die Daten zwischen
 
-    const WEATHER_LABELS = {
-        2: "Nachts", 6: "Morgens", 10: "Mittags", 
-        14: "Nachm.", 18: "Abends", 22: "Spät"
-    };
-
-    // Dummy Daten (Später durch API ersetzen)
-    function getDummyData(hour) {
-        if(hour >= 22 || hour < 6) return { i: "🌙", t: "8°", r: "10%" };
-        if(hour >= 6 && hour < 10) return { i: "🌫️", t: "12°", r: "20%" };
-        if(hour >= 10 && hour < 14) return { i: "☀️", t: "22°", r: "0%" };
-        if(hour >= 14 && hour < 18) return { i: "⛅", t: "20°", r: "10%" };
-        return { i: "🌧️", t: "15°", r: "60%" };
+    // Mapping von WMO-Codes zu Emojis
+    function getWeatherEmoji(code) {
+        if (code === 0) return "☀️";
+        if (code >= 1 && code <= 3) return "⛅";
+        if (code === 45 || code === 48) return "🌫️";
+        if (code >= 51 && code <= 67) return "🌧️"; // Niesel/Regen
+        if (code >= 80 && code <= 82) return "🌧️"; // Schauer
+        if (code >= 71 && code <= 77) return "❄️"; // Schnee
+        if (code >= 95) return "⛈️"; // Gewitter
+        return "☁️";
     }
 
-    function renderTimeline() {
-        // Nur rendern, wenn Screensaver auch sichtbar ist (spart Leistung)
-        // ODER beim ersten Start, damit was da ist.
-        const saver = document.getElementById('screensaverOverlay');
-        if (!saver.classList.contains('active') && saver.style.opacity !== '1') {
-            // Wir updaten trotzdem die Uhrzeit oben, falls er gleich anspringt
-            updateSaverClock(); 
-            return; 
+    // Daten von Open-Meteo holen
+    async function fetchWeather() {
+        if(!uiConf.lat || !uiConf.lon) return;
+        
+        log("Lade Wetter...");
+        try {
+            const url = `https://api.open-meteo.com/v1/forecast?latitude=${uiConf.lat}&longitude=${uiConf.lon}&hourly=temperature_2m,precipitation_probability,weathercode&timezone=auto&forecast_days=2`;
+            
+            const resp = await fetch(url);
+            const data = await resp.json();
+            
+            if(data.hourly) {
+                weatherCache = data;
+                log("Wetter aktualisiert 🌤️");
+                renderTimeline(); // Sofort updaten
+            }
+        } catch(e) {
+            console.error("Wetter Fehler:", e);
         }
+    }
+
+    // Diese Funktion holt die Daten für eine bestimmte Stunde aus dem Cache
+    function getRealData(hour) {
+        // Falls noch keine Daten da sind -> Lade-Dummy
+        if (!weatherCache) return { i: "⏳", t: "--°", r: "--%" };
+
+        const now = new Date();
+        // Wir müssen den Index in der "hourly" Liste finden
+        // Open-Meteo liefert stündlich ab 00:00 Uhr heute.
+        // Wenn wir Daten für "Morgen 02:00" brauchen, ist das Index 26.
+        
+        // Einfacher Trick: Wir suchen den Zeitstempel im Array
+        // Wir bauen uns einen ISO-String Start (z.B. "2024-02-12T14:00")
+        
+        // Da das komplex ist, machen wir es simpel:
+        // Wir nehmen an, weatherCache.hourly.time[X] ist ein String.
+        // Wir suchen den Eintrag, der mit unserer gesuchten Stunde matcht.
+        
+        // Zuerst: Ist die gesuchte Stunde "heute" oder "morgen"?
+        let targetTime = new Date();
+        if (hour < now.getHours()) {
+            // Wenn jetzt 18 Uhr ist, und wir suchen 02 Uhr, meinen wir MORGEN früh
+            targetTime.setDate(targetTime.getDate() + 1);
+        }
+        targetTime.setHours(hour, 0, 0, 0);
+
+        // Open-Meteo Format: "YYYY-MM-DDThh:mm"
+        // Wir bauen das manuell nach, um sicher zu matchen, oder nutzen indexOf
+        // Da Array-Find teuer ist, machen wir eine Näherung:
+        
+        const currentHourIndex = now.getHours(); 
+        let index = -1;
+        
+        // Suchen im time array
+        // Format der API: "2024-02-12T14:00"
+        // Wir nehmen einfach das erste Element, das die Stunde matcht und in der Zukunft liegt?
+        // Nein, Index-Berechnung ist sicherer:
+        
+        // Index 0 ist Heute 00:00 Uhr.
+        // Index = (StundenDifferenz zu Heute 00:00)
+        // Aber Achtung Zeitzonen...
+        
+        // PLAN B (Simpel & Robust):
+        // Wir durchsuchen die ersten 48 Einträge.
+        const isoSnippet = `T${String(hour).padStart(2,'0')}:00`;
+        
+        // Wir suchen ab "jetzt", damit wir nicht "gestern 14 uhr" finden
+        const nowIso = now.toISOString().split(':')[0]; // "2024-02-12T18"
+        
+        // Wir loopen durch die Daten
+        const times = weatherCache.hourly.time;
+        for(let i=0; i < times.length; i++) {
+            // Wir prüfen nur, ob die Stunde stimmt UND ob der Tag >= Heute ist
+            // Da die Liste sortiert ist, ist der ERSTE Treffer, der >= unserer aktuellen Stunde ist (oder morgen), der Richtige.
+            
+            if (times[i].includes(isoSnippet)) {
+                // Ist dieser Eintrag in der Vergangenheit? (Toleranz 1h)
+                const entryDate = new Date(times[i]);
+                if (entryDate >= (now.getTime() - 3600000)) {
+                    index = i;
+                    break;
+                }
+            }
+        }
+
+        if (index !== -1) {
+            const code = weatherCache.hourly.weathercode[index];
+            const temp = Math.round(weatherCache.hourly.temperature_2m[index]);
+            const rain = weatherCache.hourly.precipitation_probability[index];
+            
+            return {
+                i: getWeatherEmoji(code),
+                t: temp + "°",
+                r: rain + "%"
+            };
+        }
+        
+        return { i: "❓", t: "?°", r: "?%" };
+    }
+
+    // Timeline rendern (angepasst auf getRealData)
+    const WEATHER_LABELS = { 2: "Nachts", 6: "Morgens", 10: "Mittags", 14: "Nachm.", 18: "Abends", 22: "Spät" };
+
+    function renderTimeline() {
+        const saver = document.getElementById('screensaverOverlay');
+        // Update auch wenn unsichtbar, damit Clock stimmt, aber API Aufrufe sparen wir uns
+        updateSaverClock();
+
+        // Nur Rendern wenn sichtbar ODER beim ersten Start
+        if (!saver.classList.contains('active') && saver.style.opacity !== '1') return;
+        
+        // Falls Cache leer -> Laden!
+        if (!weatherCache) { fetchWeather(); }
 
         const now = new Date();
         const currentHour = now.getHours();
 
-        // 1. Startblock berechnen (Welcher 4h Block ist JETZT?)
+        // 1. Startblock berechnen
         let startBlock = 2;
         if (currentHour >= 22 || currentHour < 2) startBlock = 22;
         else if (currentHour >= 18) startBlock = 18;
@@ -1664,24 +1795,25 @@ function startDailyReloadTask() {
         else if (currentHour >= 6) startBlock = 6;
 
         const container = document.getElementById('forecastRow');
-        container.innerHTML = ""; // Reset
+        container.innerHTML = ""; 
 
-        // 2. 4 Karten generieren
         for (let i = 0; i < 4; i++) {
             let h = startBlock + (i * 4);
-            if (h >= 24) h -= 24; // Überlauf nach Mitternacht
-
+            if (h >= 24) h -= 24; 
+            
             let endH = h + 4;
             if (endH >= 24) endH -= 24;
             
             const hStr = String(h).padStart(2, '0');
             const endHStr = String(endH).padStart(2, '0');
-            const data = getDummyData(h);
+            
+            // HIER RUFEN WIR JETZT DIE ECHTEN DATEN AB
+            const data = getRealData(h);
             const label = WEATHER_LABELS[h] || "Zeit";
             
             const div = document.createElement('div');
             div.className = 'weather-card';
-            if (i === 0) div.classList.add('current'); // Erste Karte = Jetzt
+            if (i === 0) div.classList.add('current'); 
 
             div.innerHTML = `
                 <div class="slot-name">${label}</div>
@@ -1692,21 +1824,18 @@ function startDailyReloadTask() {
             `;
             container.appendChild(div);
         }
-        updateSaverClock();
     }
-
+    
+    // Update Clock Helper
     function updateSaverClock() {
         const now = new Date();
-        const minStr = String(now.getMinutes()).padStart(2,'0');
-        const hourStr = String(now.getHours()).padStart(2,'0');
-        document.getElementById('saverClock').innerText = `${hourStr}:${minStr} Uhr`;
-        
-        const opts = { weekday: 'long', day: 'numeric', month: 'long' };
-        document.getElementById('saverDate').innerText = now.toLocaleDateString('de-DE', opts);
+        document.getElementById('saverClock').innerText = now.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) + " Uhr";
+        document.getElementById('saverDate').innerText = now.toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' });
     }
 
-    // Init & Interval (Jede Minute updaten)
-    setInterval(renderTimeline, 60000);
+    // Intervalle starten
+    setInterval(renderTimeline, 60000); // UI Update jede Minute
+    setInterval(fetchWeather, 1000 * 60 * 60); // Wetter Update jede Stunde
     
 </script>
 </body>
