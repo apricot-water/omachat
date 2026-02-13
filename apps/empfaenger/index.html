@@ -660,6 +660,12 @@
         </div>
     </div>
 
+        <!-- NEU: INTERNET CHECKBOX -->
+<div class="setting-row" style="margin-top: 15px; border-top: 1px solid #444; padding-top: 10px;">
+    <label for="checkInternetContent" style="color:var(--accent);">🌍 Wiki & Reise-Infos anzeigen?</label>
+    <input type="checkbox" id="checkInternetContent" style="width:20px; height:20px;">
+</div>
+
     <!-- ... nachfolgender Code (Device ID) ... -->
 <!-- NEU: Device ID Editor -->
         <div style="border-top: 1px solid #444; margin: 15px 0; padding-top: 10px;">
@@ -962,10 +968,16 @@ async function processAndAdd(item, silent = false) {
    
     async function startApp() {
         await loadGitHubArchive();
+        await loadInternetContent();
+
+        currentIndex = 0;
+        updateDisplay();
+        
         connectNtfy();
         startConnectionWatchdog(); // <--- DIESE ZEILE IST WICHTIG!
         startDailyReloadTask(); 
         fetchWeather();
+        
     }
 
 async function loadGitHubArchive() {
@@ -1210,7 +1222,9 @@ async function loadGitHubArchive() {
         lat: "52.52", // Default Berlin
         lon: "13.41",
         screensaverMin: 20,
-        restartTime: "04:00" // NEU: Minuten bis dunkel (0=aus)
+        restartTime: "04:00", // NEU: Minuten bis dunkel (0=aus)
+        // NEU: Standardmäßig aus
+        showInternet: false 
     }; 
     
     let clickCnt = 0;
@@ -1316,6 +1330,9 @@ function goDark() {
         document.getElementById('checkZoom').checked = uiConf.zoomActive;
         document.getElementById('numZoomTime').value = uiConf.zoomTime || 10;
 
+       //Internet Inhalte        
+        document.getElementById('checkInternetContent').checked = uiConf.showInternet || false;
+        
         // Automatischer Restart-Zeit
         document.getElementById('inputRestartTime').value = uiConf.restartTime || "04:00";
 
@@ -1351,10 +1368,18 @@ function goDark() {
 
             uiConf.lat = document.getElementById('inputLat').value;
             uiConf.lon = document.getElementById('inputLon').value;
+
+       // NEU: Internet Checkbox auslesen
+        const newShowInternet = document.getElementById('checkInternetContent').checked;
+
+        // Checken ob sich was geändert hat (bevor wir uiConf überschreiben)
+        const internetChanged = (uiConf.showInternet !== newShowInternet);
+        
+        uiConf.showInternet = newShowInternet;
             
             localStorage.setItem('oma_ui_settings', JSON.stringify(uiConf));
-            
-            // Wetter sofort neu laden mit neuen Koordinaten
+
+             // Wetter sofort neu laden mit neuen Koordinaten
             fetchWeather(); 
             
             // NEU: Screensaver speichern
@@ -1366,6 +1391,15 @@ function goDark() {
             // Timer mit neuen Werten sofort anwenden
             resetIdleTimer();
 
+ 
+
+                  // LOGIK UPDATE: Wenn sich Internet-Einstellung geändert hat -> RELOAD ERZWINGEN
+        if (internetChanged) {
+            alert("Inhaltseinstellungen geändert. App wird neu geladen.");
+            location.reload();
+            return; // Wichtig, damit hier Schluss ist
+        }
+            
             // B) Device ID speichern
             const newId = document.getElementById('inputDeviceId').value.trim();
             const currentId = config.deviceId || "";
@@ -1963,6 +1997,69 @@ function startDailyReloadTask() {
     // Intervalle starten
     setInterval(renderTimeline, 60000); // UI Update jede Minute
     setInterval(fetchWeather, 1000 * 60 * 60); // Wetter Update jede Stunde
+
+async function loadInternetContent() {
+    // 1. Check: Ist die Funktion in den UI-Settings aktiviert?
+    if (!uiConf.showInternet) {
+        console.log("Internet-Inhalte deaktiviert.");
+        return;
+    }
+
+    log("Lade Internet-Inhalte (Wiki/Reisen)...");
+    
+    // Liste der Dateien aus dem Scraper
+    const files = [
+        'wiki-bild-des-tages.json',
+        'wiki-reiseziel.json',
+        'wiki-history.json'
+    ];
+
+    const t = new Date().getTime(); // Cache Buster
+
+    // Parallel laden
+    const requests = files.map(file => 
+        fetch(`https://api.github.com/repos/${config.ghUser}/${config.ghRepo}/contents/internet/${file}?t=${t}`, {
+            headers: { 'Authorization': `Bearer ${config.ghToken}`, 'Accept': 'application/vnd.github.v3.raw' }
+        })
+        .then(res => res.ok ? res.json() : null)
+        .catch(() => null)
+    );
+
+    const results = await Promise.all(requests);
+    
+    let count = 0;
+    // Heutiges Datum für Filter (optional, aber sauberer)
+    const todayStr = new Date().toDateString();
+
+    for (const data of results) {
+        // Wir laden nur Daten, die einen Timestamp haben
+        if (data && data.ts) {
+            // Optional: Prüfen ob das Datum von heute ist (damit wir keine alten News laden)
+            // Wenn du willst, dass ALLES geladen wird was da ist (auch wenn Scraper gestern lief),
+            // nimm die if-Abfrage mit 'dateCheck' raus.
+            const dateCheck = new Date(data.ts).toDateString();
+            
+            if (dateCheck === todayStr) {
+                messages.push({
+                    timestamp: data.ts,
+                    sender: data.source, // z.B. "Reiseziel 🌍"
+                    text: data.text,
+                    image: data.img_url,
+                    isPublic: true 
+                });
+                count++;
+            }
+        }
+    }
+    
+    if(count > 0) {
+        log(`${count} Internet-News hinzugefügt.`);
+        // WICHTIG: Neu sortieren! (Neueste zuerst: b - a)
+        messages.sort((a,b) => b.timestamp - a.timestamp);
+    }
+}
+
+
     
 </script>
 </body>
