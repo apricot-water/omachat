@@ -1999,13 +1999,14 @@ function startDailyReloadTask() {
     setInterval(fetchWeather, 1000 * 60 * 60); // Wetter Update jede Stunde
 
 // === ROBUSTE LADEFUNKTION MIT BASE64 DECODING ===
+// === ROBUSTE LADEFUNKTION MIT BILD-PRELOAD ===
 async function loadInternetContent() {
     if (!uiConf.showInternet) {
         log("Info: Internet-Inhalte deaktiviert.");
         return;
     }
 
-    log("🌐 Lade Internet-Inhalte (Base64 Mode)...");
+    log("🌐 Lade Internet-Inhalte...");
     
     const files = [
         'wiki-bild-des-tages.json',
@@ -2016,67 +2017,63 @@ async function loadInternetContent() {
     const t = new Date().getTime(); // Cache Buster
     let count = 0;
 
-    // Wir laden die Dateien nacheinander, um die Logs besser lesen zu können
     for (const file of files) {
         try {
-            // Standard API Call (ohne Raw Header) -> Wir bekommen ein JSON mit "content" Feld
             const url = `https://api.github.com/repos/${config.ghUser}/${config.ghRepo}/contents/internet/${file}?t=${t}`;
             
             const resp = await fetch(url, {
                 headers: { 'Authorization': `Bearer ${config.ghToken}` }
             });
 
-            if (!resp.ok) {
-                log(`❌ Fehler bei ${file}: Status ${resp.status}`);
-                continue;
-            }
+            if (!resp.ok) continue;
 
             const apiResponse = await resp.json();
-            
-            // GitHub liefert Content oft mit Zeilenumbrüchen (\n), die müssen weg
-            if (!apiResponse.content) {
-                log(`⚠️ ${file} ist leer (kein Content).`);
-                continue;
-            }
+            if (!apiResponse.content) continue;
 
-            // Base64 Dekodierung (Der sichere Weg)
+            // Base64 Decode
             const cleanB64 = apiResponse.content.replace(/\s/g, '');
             const decodedStr = decodeURIComponent(escape(window.atob(cleanB64)));
             const data = JSON.parse(decodedStr);
 
-            // DEBUG: Zeig uns, was drin ist
-            // console.log("Gescrapter Inhalt:", data);
+            if (!data.ts) data.ts = Date.now();
 
-            // PRÜFUNG: Hat die Datei einen Timestamp?
-            if (!data.ts) {
-                log(`⚠️ ${file} hat KEINEN Zeitstempel (ts)! Scraper neu starten?`);
-                // Fallback: Wir nehmen einfach "Jetzt" als Zeit, damit man wenigstens was sieht
-                data.ts = Date.now(); 
+            // === HIER IST DER FIX: BILD VORLADEN ===
+            let finalImage = data.img_url;
+
+            if (data.img_url && data.img_url.startsWith('http')) {
+                try {
+                    // Wir laden das Bild JETZT herunter und speichern es als Blob
+                    // Damit ist es beim Anzeigen sofort verfügbar (kein Ruckeln mehr)
+                    const imgFetch = await fetch(data.img_url);
+                    if (imgFetch.ok) {
+                        const blob = await imgFetch.blob();
+                        finalImage = URL.createObjectURL(blob);
+                    }
+                } catch (err) {
+                    console.log(`Bild-Preload Fehler bei ${file}:`, err);
+                    // Fallback: Wir lassen die URL, falls Preload nicht klappt
+                }
             }
 
-            // Hinzufügen
             messages.push({
                 timestamp: data.ts,
-                sender: data.source || "Internet", // Fallback Name
+                sender: data.source || "Internet",
                 text: data.text,
-                image: data.img_url,
+                image: finalImage, // Hier ist jetzt der schnelle Blob-Link drin
                 isPublic: true
             });
             
             count++;
 
         } catch (e) {
-            log(`❌ Crash bei ${file}: ${e.message}`);
-            console.error(e);
+            console.error(`Fehler bei ${file}:`, e);
         }
     }
     
     if (count > 0) {
-        log(`✅ ${count} Internet-News erfolgreich geladen.`);
-        // Sortieren: Neueste zuerst
+        log(`✅ ${count} Internet-News geladen.`);
+        // WICHTIG: Sortieren, damit die neuen Sachen auch wirklich oben sind
         messages.sort((a,b) => b.timestamp - a.timestamp);
-    } else {
-        log("⚠️ Keine Internet-Daten verarbeitet.");
     }
 }
     
