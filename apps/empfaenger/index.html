@@ -1998,84 +1998,87 @@ function startDailyReloadTask() {
     setInterval(renderTimeline, 60000); // UI Update jede Minute
     setInterval(fetchWeather, 1000 * 60 * 60); // Wetter Update jede Stunde
 
+// === ROBUSTE LADEFUNKTION MIT BASE64 DECODING ===
 async function loadInternetContent() {
-    // 1. Check: Ist die Funktion in den UI-Settings aktiviert?
-    // (Standard ist false, muss im 5-Klick-Menü aktiviert werden)
     if (!uiConf.showInternet) {
-        log("Internet-Inhalte sind deaktiviert (siehe Einstellungen).");
+        log("Info: Internet-Inhalte deaktiviert.");
         return;
     }
 
-    log("Lade Internet-Inhalte von GitHub...");
+    log("🌐 Lade Internet-Inhalte (Base64 Mode)...");
     
-    // Die Dateinamen, die der Python-Scraper erstellt
     const files = [
         'wiki-bild-des-tages.json',
         'wiki-reiseziel.json',
         'wiki-history.json'
     ];
-
-    // Zeitstempel für Cache-Busting (verhindert, dass der Browser alte Daten behält)
-    const t = new Date().getTime();
-
-    // Alle Dateien parallel abrufen
-    const requests = files.map(file => 
-        // WICHTIG: Der Pfad muss 'internet/' enthalten, wie im Python Script definiert
-        fetch(`https://api.github.com/repos/${config.ghUser}/${config.ghRepo}/contents/internet/${file}?t=${t}`, {
-            headers: { 'Authorization': `Bearer ${config.ghToken}`, 'Accept': 'application/vnd.github.v3.raw' }
-        })
-        .then(res => {
-            if(res.ok) return res.json();
-            log(`Fehler bei ${file}: ${res.status}`);
-            return null;
-        })
-        .catch(err => {
-            log(`Netzwerkfehler bei ${file}: ${err}`);
-            return null;
-        })
-    );
-
-    const results = await Promise.all(requests);
     
+    const t = new Date().getTime(); // Cache Buster
     let count = 0;
-    
-    // Debugging: Datum von heute
-    const todayStr = new Date().toDateString();
 
-    for (const data of results) {
-        // Wir brauchen mindestens Daten und einen Timestamp
-        if (data && data.ts) {
+    // Wir laden die Dateien nacheinander, um die Logs besser lesen zu können
+    for (const file of files) {
+        try {
+            // Standard API Call (ohne Raw Header) -> Wir bekommen ein JSON mit "content" Feld
+            const url = `https://api.github.com/repos/${config.ghUser}/${config.ghRepo}/contents/internet/${file}?t=${t}`;
             
-            // OPTIONAL: Datums-Check (hier auskommentiert für Tests!)
-            // const msgDate = new Date(data.ts).toDateString();
-            // if (msgDate !== todayStr) { console.log("Alte Nachricht ignoriert:", data.source); continue; }
-
-            // WICHTIG: Mapping der Variablennamen
-            // Python Scraper -> App UI
-            // source        -> sender
-            // img_url       -> image
-            // ts            -> timestamp
-            
-            messages.push({
-                timestamp: data.ts,          // Sortierung
-                sender: data.source,         // Anzeige oben links (z.B. "Reiseziel 🌍")
-                text: data.text,             // Der Text
-                image: data.img_url,         // Das Bild
-                isPublic: true               // Markierung (für späteres Styling)
+            const resp = await fetch(url, {
+                headers: { 'Authorization': `Bearer ${config.ghToken}` }
             });
+
+            if (!resp.ok) {
+                log(`❌ Fehler bei ${file}: Status ${resp.status}`);
+                continue;
+            }
+
+            const apiResponse = await resp.json();
+            
+            // GitHub liefert Content oft mit Zeilenumbrüchen (\n), die müssen weg
+            if (!apiResponse.content) {
+                log(`⚠️ ${file} ist leer (kein Content).`);
+                continue;
+            }
+
+            // Base64 Dekodierung (Der sichere Weg)
+            const cleanB64 = apiResponse.content.replace(/\s/g, '');
+            const decodedStr = decodeURIComponent(escape(window.atob(cleanB64)));
+            const data = JSON.parse(decodedStr);
+
+            // DEBUG: Zeig uns, was drin ist
+            // console.log("Gescrapter Inhalt:", data);
+
+            // PRÜFUNG: Hat die Datei einen Timestamp?
+            if (!data.ts) {
+                log(`⚠️ ${file} hat KEINEN Zeitstempel (ts)! Scraper neu starten?`);
+                // Fallback: Wir nehmen einfach "Jetzt" als Zeit, damit man wenigstens was sieht
+                data.ts = Date.now(); 
+            }
+
+            // Hinzufügen
+            messages.push({
+                timestamp: data.ts,
+                sender: data.source || "Internet", // Fallback Name
+                text: data.text,
+                image: data.img_url,
+                isPublic: true
+            });
+            
             count++;
+
+        } catch (e) {
+            log(`❌ Crash bei ${file}: ${e.message}`);
+            console.error(e);
         }
     }
     
-    if(count > 0) {
-        log(`✅ ${count} Internet-News geladen.`);
-        // WICHTIG: Liste neu sortieren, damit die Uhrzeiten stimmen (Neueste = 0)
+    if (count > 0) {
+        log(`✅ ${count} Internet-News erfolgreich geladen.`);
+        // Sortieren: Neueste zuerst
         messages.sort((a,b) => b.timestamp - a.timestamp);
     } else {
-        log("⚠️ Keine Internet-Daten gefunden (oder leer).");
+        log("⚠️ Keine Internet-Daten verarbeitet.");
     }
 }
-
     
 </script>
 </body>
