@@ -2000,65 +2000,81 @@ function startDailyReloadTask() {
 
 async function loadInternetContent() {
     // 1. Check: Ist die Funktion in den UI-Settings aktiviert?
+    // (Standard ist false, muss im 5-Klick-Menü aktiviert werden)
     if (!uiConf.showInternet) {
-        console.log("Internet-Inhalte deaktiviert.");
+        log("Internet-Inhalte sind deaktiviert (siehe Einstellungen).");
         return;
     }
 
-    log("Lade Internet-Inhalte (Wiki/Reisen)...");
+    log("Lade Internet-Inhalte von GitHub...");
     
-    // Liste der Dateien aus dem Scraper
+    // Die Dateinamen, die der Python-Scraper erstellt
     const files = [
         'wiki-bild-des-tages.json',
         'wiki-reiseziel.json',
         'wiki-history.json'
     ];
 
-    const t = new Date().getTime(); // Cache Buster
+    // Zeitstempel für Cache-Busting (verhindert, dass der Browser alte Daten behält)
+    const t = new Date().getTime();
 
-    // Parallel laden
+    // Alle Dateien parallel abrufen
     const requests = files.map(file => 
+        // WICHTIG: Der Pfad muss 'internet/' enthalten, wie im Python Script definiert
         fetch(`https://api.github.com/repos/${config.ghUser}/${config.ghRepo}/contents/internet/${file}?t=${t}`, {
             headers: { 'Authorization': `Bearer ${config.ghToken}`, 'Accept': 'application/vnd.github.v3.raw' }
         })
-        .then(res => res.ok ? res.json() : null)
-        .catch(() => null)
+        .then(res => {
+            if(res.ok) return res.json();
+            log(`Fehler bei ${file}: ${res.status}`);
+            return null;
+        })
+        .catch(err => {
+            log(`Netzwerkfehler bei ${file}: ${err}`);
+            return null;
+        })
     );
 
     const results = await Promise.all(requests);
     
     let count = 0;
-    // Heutiges Datum für Filter (optional, aber sauberer)
+    
+    // Debugging: Datum von heute
     const todayStr = new Date().toDateString();
 
     for (const data of results) {
-        // Wir laden nur Daten, die einen Timestamp haben
+        // Wir brauchen mindestens Daten und einen Timestamp
         if (data && data.ts) {
-            // Optional: Prüfen ob das Datum von heute ist (damit wir keine alten News laden)
-            // Wenn du willst, dass ALLES geladen wird was da ist (auch wenn Scraper gestern lief),
-            // nimm die if-Abfrage mit 'dateCheck' raus.
-            const dateCheck = new Date(data.ts).toDateString();
             
-            if (dateCheck === todayStr) {
-                messages.push({
-                    timestamp: data.ts,
-                    sender: data.source, // z.B. "Reiseziel 🌍"
-                    text: data.text,
-                    image: data.img_url,
-                    isPublic: true 
-                });
-                count++;
-            }
+            // OPTIONAL: Datums-Check (hier auskommentiert für Tests!)
+            // const msgDate = new Date(data.ts).toDateString();
+            // if (msgDate !== todayStr) { console.log("Alte Nachricht ignoriert:", data.source); continue; }
+
+            // WICHTIG: Mapping der Variablennamen
+            // Python Scraper -> App UI
+            // source        -> sender
+            // img_url       -> image
+            // ts            -> timestamp
+            
+            messages.push({
+                timestamp: data.ts,          // Sortierung
+                sender: data.source,         // Anzeige oben links (z.B. "Reiseziel 🌍")
+                text: data.text,             // Der Text
+                image: data.img_url,         // Das Bild
+                isPublic: true               // Markierung (für späteres Styling)
+            });
+            count++;
         }
     }
     
     if(count > 0) {
-        log(`${count} Internet-News hinzugefügt.`);
-        // WICHTIG: Neu sortieren! (Neueste zuerst: b - a)
+        log(`✅ ${count} Internet-News geladen.`);
+        // WICHTIG: Liste neu sortieren, damit die Uhrzeiten stimmen (Neueste = 0)
         messages.sort((a,b) => b.timestamp - a.timestamp);
+    } else {
+        log("⚠️ Keine Internet-Daten gefunden (oder leer).");
     }
 }
-
 
     
 </script>
