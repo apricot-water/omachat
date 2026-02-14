@@ -440,28 +440,28 @@
         animation: sunSpin 20s linear infinite;
     }
 
-   /* === WOLKE (Ultra-Weiß Fix mit !important) === */
+   /* === WOLKE (Fix: Gradient verhindert Invertierung zu Schwarz) === */
     .w-cloud {
         width: 7vh; height: 3.5vh;
-        background: #ffffff !important;       /* !important erzwingt Weiß */
-        background-color: #ffffff !important; /* Doppelt hält besser */
+        /* TRICK: Ein Verlauf von Weiß zu Fast-Weiß wird vom Browser NICHT dunkel gemacht! */
+        background: linear-gradient(180deg, #ffffff, #f0f0f0) !important;
         border-radius: 50px;
         position: absolute;
         top: 3vh; left: 1vh;
         z-index: 2;
-        /* Starkes weißes Leuchten statt Schatten */
-        box-shadow: 0 0 20px rgba(255, 255, 255, 0.6) !important; 
+        /* Sanfteres Leuchten */
+        box-shadow: 0 0 20px rgba(255, 255, 255, 0.5) !important; 
         animation: cloudFloat 4s ease-in-out infinite;
     }
 
-    /* Die Bubbles oben auf der Wolke auch erzwingen */
+    /* Die Bubbles oben auf der Wolke */
     .w-cloud::after, .w-cloud::before {
         content: ''; 
         position: absolute;
-        background: #ffffff !important;       /* Zwang zu Weiß */
-        background-color: #ffffff !important;
+        /* Auch hier: Verlauf statt Farbe */
+        background: linear-gradient(180deg, #ffffff, #f0f0f0) !important;
         border-radius: 50%;
-        box-shadow: none !important;          /* Keine dunklen Ränder */
+        box-shadow: none !important;
     }
     
     .w-cloud::after {
@@ -476,7 +476,7 @@
     /* === NEBEL (Helleres Grau) === */
     .w-fog {
         width: 7vh; height: 0.8vh;
-        background: #e0e0e0 !important; /* Fast Weiß */
+        background: #e0e0e0 !important;
         border-radius: 10px;
         position: absolute; top: 4vh; left: 1vh;
         animation: fogMove 5s infinite alternate;
@@ -485,17 +485,19 @@
     .w-fog::after {
         content: ''; position: absolute; top: 1.5vh; left: 1vh;
         width: 5vh; height: 0.8vh; 
-        background: #e0e0e0 !important; /* Fast Weiß */
+        background: #e0e0e0 !important;
         border-radius: 10px;
     }
 
-    /* === GEWITTER (Hellgrau statt Schwarz) === */
+    /* === GEWITTER (Auch hier Gradient nutzen) === */
     .w-storm .w-cloud, 
     .w-storm .w-cloud::after, 
     .w-storm .w-cloud::before { 
-        background: #dcdcdc !important; /* Sehr helles Grau, damit man den Blitz sieht */
+        /* Hellgrauer Verlauf für Gewitterwolken */
+        background: linear-gradient(180deg, #e0e0e0, #cccccc) !important;
         box-shadow: 0 0 10px rgba(255, 255, 255, 0.2) !important;
     }
+
     
     /* KEYFRAMES */
     @keyframes sunPulse { 0% { transform: scale(0.9); opacity: 0.8; } 100% { transform: scale(1.1); opacity: 1; } }
