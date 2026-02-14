@@ -603,7 +603,16 @@
     </div>
     <div style="font-size:10px; color:#666; text-align:right; margin-top:-5px;">(0 = Deaktiviert)</div> 
         <!-- ... vorheriger Code (Screensaver input) ... -->
-    
+
+          <!-- === NEU: ZEITRAUM BEGRENZUNG === -->
+    <div class="setting-row" style="margin-top: 10px; border-top: 1px dashed #444; padding-top: 10px;">
+        <label>Nur Nachrichten der letzten (Tage):</label>
+        <input type="number" id="numMaxDays" min="0" placeholder="0" style="width:60px; padding:5px; text-align:center;">
+    </div>
+    <div style="font-size:10px; color:#666; text-align:right; margin-top:-5px;">(0 = Alle anzeigen)</div> 
+    <!-- === ENDE NEU === -->
+
+        
     <div class="setting-row">
         <label>Täglicher Neustart (Uhrzeit):</label>
         <!-- type="time" macht automatisch eine Uhrzeit-Auswahl -->
@@ -1186,6 +1195,7 @@ async function loadGitHubArchive() {
         screensaverMin: 20,
         restartTime: "04:00", // NEU: Minuten bis dunkel (0=aus)
         // NEU: Standardmäßig aus
+        maxDays: 0,
         showInternet: false 
     }; 
     
@@ -1292,6 +1302,9 @@ function goDark() {
         document.getElementById('checkZoom').checked = uiConf.zoomActive;
         document.getElementById('numZoomTime').value = uiConf.zoomTime || 10;
 
+        //Wie viele Tage an Nachrichten laden
+       document.getElementById('numMaxDays').value = uiConf.maxDays || 0;
+        
        //Internet Inhalte        
         document.getElementById('checkInternetContent').checked = uiConf.showInternet || false;
         
@@ -1330,7 +1343,12 @@ function goDark() {
 
             uiConf.lat = document.getElementById('inputLat').value;
             uiConf.lon = document.getElementById('inputLon').value;
-
+            
+      // NEU: Max Days auslesen
+            const newMaxDays = parseInt(document.getElementById('numMaxDays').value) || 0;
+            const daysChanged = (uiConf.maxDays !== newMaxDays); // Merken ob geändert
+            uiConf.maxDays = newMaxDays;
+            
        // NEU: Internet Checkbox auslesen
         const newShowInternet = document.getElementById('checkInternetContent').checked;
 
@@ -1355,12 +1373,14 @@ function goDark() {
 
  
 
-                  // LOGIK UPDATE: Wenn sich Internet-Einstellung geändert hat -> RELOAD ERZWINGEN
-        if (internetChanged) {
-            alert("Inhaltseinstellungen geändert. App wird neu geladen.");
-            location.reload();
-            return; // Wichtig, damit hier Schluss ist
-        }
+            // LOGIK UPDATE: Wenn sich Internet ODER Tage geändert haben -> RELOAD
+            // Suche den Block wo "if (internetChanged)" steht und ändere ihn zu:
+            
+            if (internetChanged || daysChanged) {
+                alert("Einstellungen geändert (Inhalt/Zeitraum). App wird neu geladen.");
+                location.reload();
+                return; 
+            }
             
             // B) Device ID speichern
             const newId = document.getElementById('inputDeviceId').value.trim();
