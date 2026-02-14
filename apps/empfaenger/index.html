@@ -756,6 +756,19 @@ async function processAndAdd(item, silent = false) {
         // 1. TIMESTAMP NORMALISIEREN
         let safeTs = item.ts;
         if (safeTs < 100000000000) safeTs *= 1000;
+
+            // === NEU: ALTERSPRÜFUNG ===
+        // Wenn maxDays gesetzt ist (> 0) und die Nachricht älter ist -> ABBRUCH
+        if (uiConf.maxDays && uiConf.maxDays > 0) {
+            const diffMs = Date.now() - safeTs;
+            const diffDays = diffMs / (1000 * 60 * 60 * 24);
+            
+            // Wenn Nachricht älter als X Tage ist -> Nicht laden
+            if (diffDays > uiConf.maxDays) {
+                return; 
+            }
+        }
+        // === ENDE NEU ===
         
         // 2. ZOMBIE CHECK
         if (item.hidden || hiddenRegistry.has(safeTs)) {
