@@ -7,7 +7,7 @@
 <title>Oma Display V10</title>
 <style>
     /* === OMA UI DESIGN === */
-    :root { --bg: #000000; --text: #ffffff; --accent: #4cd137; }
+    :root { --bg: #000000; --text: #ffffff; --accent: #4cd137; color-scheme: only dark; }
 * { 
         box-sizing: border-box;
         /* === KIOSK SCHUTZ === */
@@ -440,17 +440,25 @@
         animation: sunSpin 20s linear infinite;
     }
 
-   /* === WOLKE (Fix: Gradient verhindert Invertierung zu Schwarz) === */
+    /* === WOLKE (Anti-Darkmode Fix) === */
     .w-cloud {
         width: 7vh; height: 3.5vh;
-        /* TRICK: Ein Verlauf von Weiß zu Fast-Weiß wird vom Browser NICHT dunkel gemacht! */
-        background: linear-gradient(180deg, #ffffff, #f0f0f0) !important;
+        
+        /* 1. Zwinge Weiß */
+        background: #ffffff !important;
+        
+        /* 2. Verbiete dem Browser Farbkorrekturen */
+        forced-color-adjust: none; 
+        -webkit-print-color-adjust: exact;
+        
+        /* 3. Trick: Schrift schwarz setzen -> Browser lässt Hintergrund weiß für Kontrast */
+        color: #000000; 
+
         border-radius: 50px;
         position: absolute;
         top: 3vh; left: 1vh;
         z-index: 2;
-        /* Sanfteres Leuchten */
-        box-shadow: 0 0 20px rgba(255, 255, 255, 0.5) !important; 
+        box-shadow: 0 0 20px rgba(255, 255, 255, 0.6) !important; 
         animation: cloudFloat 4s ease-in-out infinite;
     }
 
@@ -458,8 +466,8 @@
     .w-cloud::after, .w-cloud::before {
         content: ''; 
         position: absolute;
-        /* Auch hier: Verlauf statt Farbe */
-        background: linear-gradient(180deg, #ffffff, #f0f0f0) !important;
+        background: #ffffff !important;
+        forced-color-adjust: none; /* Auch hier Schutz */
         border-radius: 50%;
         box-shadow: none !important;
     }
