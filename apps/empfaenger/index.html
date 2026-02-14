@@ -435,99 +435,61 @@
         animation: sunSpin 20s linear infinite;
     }
 
-    /* WOLKE (Basis - jetzt hellweiß) */
+   /* === WOLKE (Ultra-Weiß Fix mit !important) === */
     .w-cloud {
         width: 7vh; height: 3.5vh;
-        background: #ffffff;  /* <-- HIER GEÄNDERT: Reinweiß */
+        background: #ffffff !important;       /* !important erzwingt Weiß */
+        background-color: #ffffff !important; /* Doppelt hält besser */
         border-radius: 50px;
         position: absolute;
         top: 3vh; left: 1vh;
         z-index: 2;
-        box-shadow: 0 0 10px rgba(255, 255, 255, 0.3); /* Leichtes Leuchten statt dunkler Schatten */
+        /* Starkes weißes Leuchten statt Schatten */
+        box-shadow: 0 0 20px rgba(255, 255, 255, 0.6) !important; 
         animation: cloudFloat 4s ease-in-out infinite;
     }
+
+    /* Die Bubbles oben auf der Wolke auch erzwingen */
+    .w-cloud::after, .w-cloud::before {
+        content: ''; 
+        position: absolute;
+        background: #ffffff !important;       /* Zwang zu Weiß */
+        background-color: #ffffff !important;
+        border-radius: 50%;
+        box-shadow: none !important;          /* Keine dunklen Ränder */
+    }
+    
     .w-cloud::after {
-        content: ''; position: absolute;
         top: -1.5vh; left: 1vh;
         width: 3vh; height: 3vh;
-        background: #ffffff; /* <-- Auch Weiß */
-        border-radius: 50%;
     }
     .w-cloud::before {
-        content: ''; position: absolute;
         top: -2.5vh; left: 3vh;
         width: 4vh; height: 4vh;
-        background: #ffffff; /* <-- Auch Weiß */
-        border-radius: 50%;
     }
 
-
-    /* WOLKE + SONNE (Mix) */
-    .w-partly-cloudy .w-sun {
-        width: 3.5vh; height: 3.5vh;
-        top: 0.5vh; left: 4.5vh;
-        z-index: 1; /* Sonne hinter Wolke */
-        box-shadow: 0 0 20px #f1c40f;
-    }
-
-    /* REGEN */
-    .w-rain {
-        position: absolute; z-index: 1;
-        top: 5vh; left: 2vh;
-        display: flex; gap: 0.8vh;
-    }
-    .w-drop {
-        width: 0.6vh; height: 1.5vh;
-        background: #3498db;
-        border-radius: 20px;
-        opacity: 0.6;
-        animation: rainDrop 1s infinite linear;
-    }
-    /* Versetzte Tropfen für natürlicheren Look */
-    .w-drop:nth-child(1) { animation-delay: 0s; }
-    .w-drop:nth-child(2) { animation-delay: 0.3s; }
-    .w-drop:nth-child(3) { animation-delay: 0.5s; }
-
-    /* SCHNEE */
-    .w-snow {
-        position: absolute; z-index: 1;
-        top: 5vh; left: 2vh;
-        display: flex; gap: 1vh;
-    }
-    .w-flake {
-        color: white; font-size: 2vh;
-        animation: snowFall 3s infinite linear;
-    }
-
-/* NEBEL (Heller) */
+    /* === NEBEL (Helleres Grau) === */
     .w-fog {
         width: 7vh; height: 0.8vh;
-        background: #bdc3c7; /* <-- Helles Silber statt Dunkelgrau */
+        background: #e0e0e0 !important; /* Fast Weiß */
         border-radius: 10px;
         position: absolute; top: 4vh; left: 1vh;
         animation: fogMove 5s infinite alternate;
-        opacity: 0.8; /* Etwas sichtbarer */
+        opacity: 0.9;
     }
     .w-fog::after {
         content: ''; position: absolute; top: 1.5vh; left: 1vh;
         width: 5vh; height: 0.8vh; 
-        background: #bdc3c7; /* <-- Helles Silber */
+        background: #e0e0e0 !important; /* Fast Weiß */
         border-radius: 10px;
     }
 
-    /* GEWITTER (Silber statt Schwarz) */
-    .w-storm .w-cloud { 
-        background: #bdc3c7; /* <-- Helles Silber für Gewitter */
-    }
+    /* === GEWITTER (Hellgrau statt Schwarz) === */
+    .w-storm .w-cloud, 
     .w-storm .w-cloud::after, 
     .w-storm .w-cloud::before { 
-        background: #bdc3c7; 
-    }
-    
-    /* Blitz noch etwas heller machen */
-    .w-bolt {
-        color: #fff200; /* Knallgelb */
-        text-shadow: 0 0 15px #fff200;
+        background: #dcdcdc !important; /* Sehr helles Grau, damit man den Blitz sieht */
+        box-shadow: 0 0 10px rgba(255, 255, 255, 0.2) !important;
     }
     
     /* KEYFRAMES */
