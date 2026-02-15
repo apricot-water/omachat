@@ -2318,12 +2318,17 @@ async function loadVoiceMessages() {
 
         const files = await resp.json();
         
-        // Filtern nach .json und sortieren (Neueste zuerst)
-        // Dateiname ist z.B. voice_170792345.json -> Sortierung nach Name funktioniert meist, 
-        // aber wir sortieren sicherheitshalber alphanumerisch rückwärts
+        // UPDATE: Sortierung nach TIMESTAMP im Dateinamen (egal ob oma_ oder reply_)
         const voiceFiles = files
             .filter(f => f.name.endsWith('.json'))
-            .sort((a,b) => b.name.localeCompare(a.name)); // Neueste oben
+            .sort((a,b) => {
+                // Hilfsfunktion: Zahl aus String extrahieren
+                const getTs = (name) => {
+                    const match = name.match(/(\d+)/);
+                    return match ? Number(match[1]) : 0;
+                };
+                return getTs(b.name) - getTs(a.name); // Neueste zuerst
+            });
 
         countLabel.innerText = `(${voiceFiles.length})`;
         list.innerHTML = "";
@@ -2333,8 +2338,7 @@ async function loadVoiceMessages() {
             return;
         }
 
-        // 2. Dateien einzeln laden und anzeigen
-        // Wir laden erstmal nur die ersten 10, um API Limits zu schonen, falls es viele sind
+        // 2. Dateien laden (Max 10 für Performance)
         const maxLoad = 10; 
         
         for (let i = 0; i < Math.min(voiceFiles.length, maxLoad); i++) {
@@ -2372,10 +2376,10 @@ async function fetchAndRenderVoice(fileEntry, header, container) {
         const payload = JSON.parse(decryptedStr);
         const dateStr = new Date(payload.ts).toLocaleString();
         
-        // UNTERSCHEIDUNG: Ist es von Oma?
-        // Wir nehmen an: Wenn "sender" == "Oma", ist es eingehend.
-        // Wenn Dateiname mit "reply_" beginnt ODER Sender != "Oma", ist es ausgehend.
-        const isOma = (payload.sender === "Oma") && !fileEntry.name.startsWith("reply_");
+        // === UPDATE: Bessere Erkennung ===
+        // Ist es von Oma? (Checkt auf neuen Prefix 'oma_voice_', alten Prefix 'voice_' oder Sendername)
+        const isReply = fileEntry.name.startsWith("reply_");
+        const isOma = fileEntry.name.startsWith("oma_voice_") || fileEntry.name.startsWith("voice_") || (payload.sender === "Oma" && !isReply);
         
         const cssClass = isOma ? "incoming" : "outgoing";
         const icon = isOma ? "👵" : "📤";
@@ -2395,6 +2399,7 @@ async function fetchAndRenderVoice(fileEntry, header, container) {
 
     } catch(e) { console.error(e); }
 }
+    
 function renderErrorItem(container, msg, filename) {
     const div = document.createElement('div');
     div.className = 'voice-card';
