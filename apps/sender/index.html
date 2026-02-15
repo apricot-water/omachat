@@ -250,6 +250,41 @@
     body.dark audio {
         filter: invert(1); /* Trick um den Player dunkel zu machen */
     }
+    /* === VOICE RECORDER UI (SENDER) === */
+    #voiceModal {
+        display: none; position: fixed; top: 0; left: 0; 
+        width: 100%; height: 100%; background: rgba(0,0,0,0.95);
+        z-index: 3000; flex-direction: column; 
+        align-items: center; justify-content: center;
+    }
+    .rec-status { font-size: 24px; color: #ccc; margin-bottom: 20px; font-weight: bold; }
+    .rec-timer { font-size: 60px; color: white; font-family: monospace; margin-bottom: 40px; }
+    .rec-controls { display: flex; gap: 20px; align-items: center; }
+    
+    .btn-rec { 
+        width: 100px; height: 100px; border-radius: 50%; border: none;
+        font-size: 35px; font-weight: bold; color: white; cursor: pointer;
+        display: flex; align-items: center; justify-content: center;
+        box-shadow: 0 0 30px rgba(0,0,0,0.5); transition: all 0.2s;
+    }
+    .btn-start { background: #4cd137; }
+    .btn-stop { background: #e84118; animation: pulseRed 1.5s infinite; }
+    .btn-send { background: #00a8ff; width: auto; padding: 15px 30px; border-radius: 15px; font-size: 20px; }
+    
+    .btn-cancel-modal {
+        margin-top: 40px; background: #333; color: #aaa; border: 1px solid #555;
+        padding: 10px 20px; border-radius: 30px; cursor: pointer;
+    }
+
+    @keyframes pulseRed { 
+        0% { box-shadow: 0 0 0 0 rgba(232, 65, 24, 0.7); } 
+        70% { box-shadow: 0 0 0 15px rgba(232, 65, 24, 0); } 
+        100% { box-shadow: 0 0 0 0 rgba(232, 65, 24, 0); } 
+    }
+
+    /* Nachrichten Unterscheidung */
+    .voice-card.incoming { border-left-color: var(--accent); background: var(--input-bg); } /* Oma */
+    .voice-card.outgoing { border-left-color: #ff9500; background: rgba(255, 149, 0, 0.1); } /* Wir */
     
 </style>
 </head>
@@ -418,6 +453,13 @@
                 Antworten von Oma <span id="voiceCount" style="color:var(--text-sub); font-weight:normal;"></span>
             </div>
             <button onclick="loadVoiceMessages()" style="background:none; border:none; color:var(--accent); font-weight:bold; cursor:pointer;">↻ Laden</button>
+        </div>
+
+               <!-- NEU: AUFNAHME BUTTON FÜR DEN SENDER -->
+        <div style="padding: 15px; border-bottom: 1px solid var(--input-bg); text-align: center;">
+            <button class="btn-primary" style="background: linear-gradient(135deg, #00b894, #00cec9);" onclick="openSenderVoiceUI()">
+                🎙️ Neue Sprachnachricht senden
+            </button>
         </div>
         
         <div class="scroll-area" id="voiceList">
@@ -594,6 +636,15 @@
             </div>
         </div>
     </div>
+
+<!-- SENDER VOICE MODAL -->
+    <div id="voiceModal">
+        <div id="recStatus" class="rec-status">Bereit</div>
+        <div id="recTimer" class="rec-timer">00:00</div>
+        <div class="rec-controls" id="recBtns"></div>
+        <button class="btn-cancel-modal" onclick="closeVoiceUI()">Abbrechen</button>
+    </div>
+    
 <script>
     // --- 1. MAGIC LINK & CONFIG ---
     let conf = { t: '', p: '', gu: '', gr: '', gt: '' };
@@ -2305,18 +2356,12 @@ async function loadVoiceMessages() {
 
 async function fetchAndRenderVoice(fileEntry, header, container) {
     try {
-        // Dateiinhalt laden
-        const resp = await fetch(fileEntry.url, { headers: header }); // fileEntry.url ist die API URL
+        const resp = await fetch(fileEntry.url, { headers: header });
         if(!resp.ok) return;
-        
         const jsonFile = await resp.json();
         
-        // Content Decodieren
         const rawContent = jsonFile.content.replace(/\s/g, '');
         const encryptedJson = JSON.parse(decodeURIComponent(escape(atob(rawContent))));
-        
-        // Entschlüsseln
-        // encryptedJson sieht so aus: { sender: "Oma", ts: 123, enc: "..." }
         const decryptedStr = await decryptText(encryptedJson.enc, conf.p);
         
         if(!decryptedStr) {
@@ -2325,28 +2370,31 @@ async function fetchAndRenderVoice(fileEntry, header, container) {
         }
 
         const payload = JSON.parse(decryptedStr);
-        // payload sieht so aus: { sender: "Oma", ts: 123, audio: "data:audio/webm;base64,..." }
-
-        // Render UI
         const dateStr = new Date(payload.ts).toLocaleString();
         
+        // UNTERSCHEIDUNG: Ist es von Oma?
+        // Wir nehmen an: Wenn "sender" == "Oma", ist es eingehend.
+        // Wenn Dateiname mit "reply_" beginnt ODER Sender != "Oma", ist es ausgehend.
+        const isOma = (payload.sender === "Oma") && !fileEntry.name.startsWith("reply_");
+        
+        const cssClass = isOma ? "incoming" : "outgoing";
+        const icon = isOma ? "👵" : "📤";
+        const title = isOma ? "Nachricht von Oma" : `Gesendet von ${payload.sender}`;
+
         const div = document.createElement('div');
-        div.className = 'voice-card';
+        div.className = `voice-card ${cssClass}`;
         div.innerHTML = `
             <div class="voice-meta">
-                <span>📅 ${dateStr}</span>
-                <button onclick="deleteVoiceFile('${fileEntry.sha}', '${fileEntry.path}')" style="background:rgba(255,59,48,0.1); color:var(--danger); border:none; border-radius:4px; padding:4px 8px; cursor:pointer;">🗑️ Löschen</button>
+                <span style="font-weight:bold; color:var(--text-main)">${icon} ${title}</span>
+                <button onclick="deleteVoiceFile('${fileEntry.sha}', '${fileEntry.path}')" style="background:rgba(255,59,48,0.1); color:var(--danger); border:none; border-radius:4px; padding:4px 8px; cursor:pointer;">🗑️</button>
             </div>
+            <div style="font-size:11px; margin-bottom:5px;">📅 ${dateStr}</div>
             <audio controls src="${payload.audio}"></audio>
         `;
         container.appendChild(div);
 
-    } catch(e) {
-        console.error(e);
-        renderErrorItem(container, "Fehler beim Laden", fileEntry.name);
-    }
+    } catch(e) { console.error(e); }
 }
-
 function renderErrorItem(container, msg, filename) {
     const div = document.createElement('div');
     div.className = 'voice-card';
@@ -2379,7 +2427,130 @@ async function deleteVoiceFile(sha, path) {
         alert("Fehler: " + e);
     }
 }
+    // === SENDER VOICE RECORDING ===
+let mediaRecorder = null;
+let audioChunks = [];
+let recInterval = null;
+let recSeconds = 0;
+let recordedBlob = null;
+
+function openSenderVoiceUI() {
+    document.getElementById('voiceModal').style.display = 'flex';
+    resetRecUI();
+}
+
+function closeVoiceUI() {
+    if(mediaRecorder && mediaRecorder.state === "recording") stopRecording();
+    document.getElementById('voiceModal').style.display = 'none';
+}
+
+function resetRecUI() {
+    recSeconds = 0;
+    audioChunks = [];
+    recordedBlob = null;
+    document.getElementById('recTimer').innerText = "00:00";
+    document.getElementById('recStatus').innerText = "Bereit";
+    document.getElementById('recBtns').innerHTML = `<button class="btn-rec btn-start" onclick="startRecording()">🔴</button>`;
+}
+
+async function startRecording() {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream);
+        mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+        mediaRecorder.onstop = () => {
+            recordedBlob = new Blob(audioChunks, { type: 'audio/webm' });
+            showSendUI();
+        };
+        mediaRecorder.start();
+        document.getElementById('recStatus').innerText = "Aufnahme läuft...";
+        document.getElementById('recBtns').innerHTML = `<button class="btn-rec btn-stop" onclick="stopRecording()">⬛</button>`;
+        
+        recInterval = setInterval(() => {
+            recSeconds++;
+            document.getElementById('recTimer').innerText = "00:" + (recSeconds<10?"0":"") + recSeconds;
+            if(recSeconds >= 60) stopRecording();
+        }, 1000);
+    } catch(e) { alert("Mikrofon Fehler: " + e); closeVoiceUI(); }
+}
+
+function stopRecording() {
+    if(mediaRecorder) { mediaRecorder.stop(); mediaRecorder.stream.getTracks().forEach(t => t.stop()); }
+    clearInterval(recInterval);
+}
+
+function showSendUI() {
+    document.getElementById('recStatus').innerText = "Fertig!";
+    document.getElementById('recBtns').innerHTML = `
+        <button class="btn-rec" style="background:#555; width:60px; height:60px; font-size:20px; margin-right:10px" onclick="resetRecUI()">↺</button>
+        <button class="btn-rec btn-send" onclick="sendVoiceMessage()">Senden 🚀</button>
+    `;
+}
+
+async function sendVoiceMessage() {
+    if(!recordedBlob || !conf.t || !conf.p) return alert("Fehler: Konfig fehlt!");
+    const senderName = document.getElementById('senderName').value || "Familie";
     
+    document.getElementById('recStatus').innerText = "Verschlüssele...";
+    
+    const reader = new FileReader();
+    reader.readAsDataURL(recordedBlob);
+    reader.onloadend = async function() {
+        const base64Audio = reader.result;
+        
+        // 1. Payload bauen (mit TYPE: VOICE und SENDER NAME)
+        const payload = {
+            sender: senderName,
+            ts: Date.now(),
+            type: "voice", // WICHTIG FÜR OMA
+            audio: base64Audio
+        };
+        
+        const encContent = await encryptText(JSON.stringify(payload), conf.p);
+        
+        // 2. Upload zu GitHub (Voice Inbox für Historie)
+        // Wir nennen es "reply_...", damit wir unterscheiden können
+        if(conf.gu && conf.gr && conf.gt) {
+            document.getElementById('recStatus').innerText = "Speichere...";
+            const filename = `voice_inbox/reply_${payload.ts}.json`;
+            const ghUrl = `https://api.github.com/repos/${conf.gu}/${conf.gr}/contents/${filename}`;
+            
+            // Wrapper für GitHub File
+            const ghPayload = {
+                sender: senderName,
+                ts: payload.ts,
+                enc: encContent
+            };
+            const b64Content = btoa(unescape(encodeURIComponent(JSON.stringify(ghPayload))));
+            
+            try {
+                await fetch(ghUrl, {
+                    method: 'PUT',
+                    headers: { 'Authorization': `Bearer ${conf.gt}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: "Voice reply", content: b64Content })
+                });
+            } catch(e) { console.error("GitHub Upload fail", e); }
+        }
+        
+        // 3. Senden an NTFY (Damit Oma es sofort kriegt!)
+        // Der Python Bot sieht das auch und packt es ins Archiv
+        document.getElementById('recStatus').innerText = "Sende an Oma...";
+        try {
+            await fetch(`https://ntfy.sh/${conf.t}`, {
+                method: 'POST',
+                headers: { 'Title': encContent }, // Verschlüsselter Content im Titel
+                body: "Voice Message" // Dummy Body
+            });
+            
+            showToast("Sprachnachricht gesendet! 🎙️");
+            closeVoiceUI();
+            setTimeout(loadVoiceMessages, 2000); // Liste neu laden
+            
+        } catch(e) {
+            alert("Sende-Fehler: " + e);
+        }
+    };
+}
     
     // Tour initialisieren (ganz am Ende starten)
     tour.init();
