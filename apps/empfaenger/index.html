@@ -886,6 +886,9 @@ let config = JSON.parse(localStorage.getItem('oma_conf_v10')) || null;
     // NEU: Eine Merkliste für gelöschte Timestamps
     let hiddenRegistry = new Set(); 
     let currentIndex = 0;
+
+    // === NEU: MERKLISTE FÜR SPRACHNACHRICHTEN ===
+    let loadedVoiceFiles = new Set();
     
     // Web Crypto Setup
     const enc = new TextEncoder();
@@ -1134,6 +1137,8 @@ async function processAndAdd(item, silent = false) {
     async function startApp() {
         await loadGitHubArchive();
         await loadInternetContent();
+        // === NEU: SOFORT NACH VOICE SUCHEN ===
+        await loadVoiceInbox(); 
 
         currentIndex = 0;
         updateDisplay();
@@ -1142,6 +1147,7 @@ async function processAndAdd(item, silent = false) {
         startConnectionWatchdog(); // <--- DIESE ZEILE IST WICHTIG!
         startDailyReloadTask(); 
         fetchWeather();
+        
         
     }
 
@@ -2189,6 +2195,8 @@ function startDailyReloadTask() {
     // Intervalle starten
     setInterval(renderTimeline, 60000); // UI Update jede Minute
     setInterval(fetchWeather, 1000 * 60 * 60); // Wetter Update jede Stunde
+       // === NEU: VOICE UPDATE (Jede Minute) ===
+    setInterval(loadVoiceInbox, 60000);
 
 // === ROBUSTE LADEFUNKTION MIT BASE64 DECODING ===
 // === ROBUSTE LADEFUNKTION MIT BILD-PRELOAD ===
@@ -2480,6 +2488,62 @@ async function encryptAndUploadVoice() {
                 btn.innerText = "▶";
             }, 5000);
         };
+    }
+
+    // === NEU: SPRACHNACHRICHTEN VON GITHUB LADEN ===
+    async function loadVoiceInbox() {
+        if (!config.ghUser || !config.ghRepo || !config.ghToken) return;
+        
+        // console.log("🎙️ Prüfe auf Sprachnachrichten..."); // Optional für Debugging
+
+        try {
+            // 1. Inhalt des Ordners 'voice_inbox' abrufen
+            // wir nutzen t=... als Cache Buster, damit wir immer die neueste Liste kriegen
+            const url = `https://api.github.com/repos/${config.ghUser}/${config.ghRepo}/contents/voice_inbox?t=${Date.now()}`;
+            const resp = await fetch(url, { 
+                headers: { 'Authorization': `Bearer ${config.ghToken}`, 'Accept': 'application/vnd.github.v3+json' }
+            });
+
+            if (resp.status === 404) return; // Ordner leer oder existiert noch nicht
+            if (!resp.ok) return;
+
+            const files = await resp.json();
+
+            // 2. Jede Datei prüfen
+            for (const file of files) {
+                // Nur JSONs und nur neue Dateien
+                if (!file.name.endsWith('.json') || loadedVoiceFiles.has(file.name)) continue;
+
+                // 3. Inhalt der Datei laden
+                const fileResp = await fetch(file.url, { 
+                    headers: { 'Authorization': `Bearer ${config.ghToken}`, 'Accept': 'application/vnd.github.v3+json' }
+                });
+                
+                if (fileResp.ok) {
+                    const fileJson = await fileResp.json();
+                    
+                    // GitHub Content ist base64 codiert -> Decodieren
+                    const rawContent = fileJson.content.replace(/\s/g, '');
+                    const jsonString = decodeURIComponent(escape(atob(rawContent)));
+                    const data = JSON.parse(jsonString);
+                    
+                    // data sieht so aus: { sender: "...", ts: 123, enc: "VERSCHLÜSSELT..." }
+                    
+                    // 4. An die Verarbeitungs-Zentrale übergeben
+                    await processAndAdd({
+                        ts: data.ts,
+                        enc: data.enc, // Das hier enthält Audio & Type Info
+                        img: null,
+                        hidden: false
+                    });
+
+                    // 5. Als "erledigt" markieren
+                    loadedVoiceFiles.add(file.name);
+                }
+            }
+        } catch (e) {
+            console.error("Fehler beim Laden der Voice Inbox:", e);
+        }
     }
     
 </script>
