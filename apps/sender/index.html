@@ -2489,33 +2489,41 @@ function showSendUI() {
 
 async function sendVoiceMessage() {
     if(!recordedBlob || !conf.t || !conf.p) return alert("Fehler: Konfig fehlt!");
-    const senderName = document.getElementById('senderName').value || "Familie";
     
-    document.getElementById('recStatus').innerText = "Verschlüssele...";
+    // Status Update
+    const statusEl = document.getElementById('recStatus');
+    statusEl.innerText = "Verschlüssele...";
+    
+    const senderName = document.getElementById('senderName').value || "Familie";
     
     const reader = new FileReader();
     reader.readAsDataURL(recordedBlob);
     reader.onloadend = async function() {
         const base64Audio = reader.result;
         
-        // 1. Payload bauen (mit TYPE: VOICE und SENDER NAME)
+        // 1. Payload bauen (mit TYPE: VOICE)
         const payload = {
             sender: senderName,
             ts: Date.now(),
-            type: "voice", // WICHTIG FÜR OMA
+            type: "voice", // Wichtig für Empfänger
             audio: base64Audio
         };
         
+        // 2. Verschlüsseln
         const encContent = await encryptText(JSON.stringify(payload), conf.p);
         
-        // 2. Upload zu GitHub (Voice Inbox für Historie)
-        // Wir nennen es "reply_...", damit wir unterscheiden können
+        if (!encContent) {
+            alert("Fehler bei der Verschlüsselung.");
+            return;
+        }
+
+        // --- GITHUB UPLOAD (Für die Historie / Tab) ---
         if(conf.gu && conf.gr && conf.gt) {
-            document.getElementById('recStatus').innerText = "Speichere...";
+            statusEl.innerText = "Speichere (GitHub)...";
             const filename = `voice_inbox/reply_${payload.ts}.json`;
             const ghUrl = `https://api.github.com/repos/${conf.gu}/${conf.gr}/contents/${filename}`;
             
-            // Wrapper für GitHub File
+            // GitHub braucht den Inhalt nochmal base64 codiert im JSON Body
             const ghPayload = {
                 sender: senderName,
                 ts: payload.ts,
@@ -2524,34 +2532,45 @@ async function sendVoiceMessage() {
             const b64Content = btoa(unescape(encodeURIComponent(JSON.stringify(ghPayload))));
             
             try {
-                await fetch(ghUrl, {
+                // Wir warten hier NICHT auf GitHub, damit es schneller geht (Fire & Forget)
+                fetch(ghUrl, {
                     method: 'PUT',
                     headers: { 'Authorization': `Bearer ${conf.gt}`, 'Content-Type': 'application/json' },
                     body: JSON.stringify({ message: "Voice reply", content: b64Content })
-                });
+                }).catch(e => console.log("GH Upload Background Error", e));
             } catch(e) { console.error("GitHub Upload fail", e); }
         }
         
-        // 3. Senden an NTFY (Damit Oma es sofort kriegt!)
-        // Der Python Bot sieht das auch und packt es ins Archiv
-        document.getElementById('recStatus').innerText = "Sende an Oma...";
+        // --- NTFY UPLOAD (Der wichtige Teil für Oma) ---
+        statusEl.innerText = "Sende an Oma...";
+        
         try {
+            // FIX: Wir senden den verschlüsselten String als BLOB (Datei), nicht als Header!
+            // Header sind limitiert, Body (PUT) darf bis zu 15MB groß sein.
+            const blobToSend = new Blob([encContent], { type: 'text/plain' });
+
             await fetch(`https://ntfy.sh/${conf.t}`, {
-                method: 'POST',
-                headers: { 'Title': encContent }, // Verschlüsselter Content im Titel
-                body: "Voice Message" // Dummy Body
+                method: 'PUT', // PUT ist wichtig für Attachments
+                body: blobToSend,
+                headers: { 
+                    'Filename': 'voice_msg.secure', // Dateiname signalisiert Anhang
+                    'Title': 'New Voice Message' // Titel ist jetzt nur Info
+                } 
             });
             
             showToast("Sprachnachricht gesendet! 🎙️");
             closeVoiceUI();
-            setTimeout(loadVoiceMessages, 2000); // Liste neu laden
+            
+            // Kurz warten, dann Liste aktualisieren
+            setTimeout(loadVoiceMessages, 2000); 
             
         } catch(e) {
-            alert("Sende-Fehler: " + e);
+            console.error(e);
+            alert("Sende-Fehler: " + e.message);
+            statusEl.innerText = "Fehler!";
         }
     };
 }
-    
     // Tour initialisieren (ganz am Ende starten)
     tour.init();
     
