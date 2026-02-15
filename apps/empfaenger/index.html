@@ -2522,59 +2522,88 @@ async function encryptAndUploadVoice() {
         };
     }
     
-    // === NEU: SPRACHNACHRICHTEN VON GITHUB LADEN ===
+
+// === UPDATED: VOICE INBOX MIT SYNC & CLEANUP ===
     async function loadVoiceInbox() {
         if (!config.ghUser || !config.ghRepo || !config.ghToken) return;
-        
-        // console.log("🎙️ Prüfe auf Sprachnachrichten..."); // Optional für Debugging
 
         try {
-            // 1. Inhalt des Ordners 'voice_inbox' abrufen
-            // wir nutzen t=... als Cache Buster, damit wir immer die neueste Liste kriegen
+            // 1. Liste laden (Mit Cache-Killer 'no-store')
             const url = `https://api.github.com/repos/${config.ghUser}/${config.ghRepo}/contents/voice_inbox?t=${Date.now()}`;
             const resp = await fetch(url, { 
-                headers: { 'Authorization': `Bearer ${config.ghToken}`, 'Accept': 'application/vnd.github.v3+json' }
+                headers: { 'Authorization': `Bearer ${config.ghToken}`, 'Accept': 'application/vnd.github.v3+json' },
+                cache: "no-store" // WICHTIG: Zwingt Browser, wirklich neu zu laden
             });
 
-            if (resp.status === 404) return; // Ordner leer oder existiert noch nicht
+            // Fall A: Ordner leer oder weg (404) -> Alle Voice Nachrichten lokal löschen
+            if (resp.status === 404) {
+                const countBefore = messages.length;
+                messages = messages.filter(m => !m.isVoice); // Nur Nicht-Voice behalten
+                loadedVoiceFiles.clear();
+                
+                if (messages.length !== countBefore) {
+                    console.log("🧹 Alle Sprachnachrichten entfernt (Ordner leer).");
+                    currentIndex = 0;
+                    updateDisplay();
+                }
+                return;
+            }
+
             if (!resp.ok) return;
 
             const files = await resp.json();
 
-            // 2. Jede Datei prüfen
+            // 2. AUFRÄUMEN (Sync): Was lokal da ist, aber nicht mehr auf GitHub -> Löschen
+            // Wir extrahieren die Timestamps aus den Dateinamen auf dem Server
+            const serverTimestamps = new Set();
+            files.forEach(f => {
+                // Sucht Zahl zwischen "_" und ".json" (z.B. reply_17079123.json -> 17079123)
+                const match = f.name.match(/_(\d+)\.json$/);
+                if (match) serverTimestamps.add(Number(match[1]));
+            });
+
+            const countBefore = messages.length;
+            // Wir filtern das messages Array
+            messages = messages.filter(m => {
+                // Wenn es keine Sprachnachricht ist -> Behalten
+                if (!m.isVoice) return true;
+                // Wenn es eine ist -> Nur behalten, wenn Timestamp auf Server existiert
+                return serverTimestamps.has(m.timestamp);
+            });
+
+            // Wenn wir was gelöscht haben -> UI Update
+            if (messages.length !== countBefore) {
+                console.log("🧹 Gelöschte Nachrichten entfernt.");
+                currentIndex = 0; 
+                updateDisplay();
+            }
+
+            // 3. NEUE LADEN (Wie vorher)
             for (const file of files) {
-                // Nur JSONs und nur neue Dateien
                 if (!file.name.endsWith('.json') || loadedVoiceFiles.has(file.name)) continue;
 
-                // 3. Inhalt der Datei laden
                 const fileResp = await fetch(file.url, { 
                     headers: { 'Authorization': `Bearer ${config.ghToken}`, 'Accept': 'application/vnd.github.v3+json' }
                 });
                 
                 if (fileResp.ok) {
                     const fileJson = await fileResp.json();
-                    
-                    // GitHub Content ist base64 codiert -> Decodieren
                     const rawContent = fileJson.content.replace(/\s/g, '');
                     const jsonString = decodeURIComponent(escape(atob(rawContent)));
                     const data = JSON.parse(jsonString);
                     
-                    // data sieht so aus: { sender: "...", ts: 123, enc: "VERSCHLÜSSELT..." }
-                    
-                    // 4. An die Verarbeitungs-Zentrale übergeben
                     await processAndAdd({
                         ts: data.ts,
-                        enc: data.enc, // Das hier enthält Audio & Type Info
+                        enc: data.enc, 
                         img: null,
                         hidden: false
                     });
 
-                    // 5. Als "erledigt" markieren
                     loadedVoiceFiles.add(file.name);
                 }
             }
         } catch (e) {
-            console.error("Fehler beim Laden der Voice Inbox:", e);
+            console.error("Voice Sync Fehler:", e);
         }
     }
     
