@@ -837,6 +837,13 @@
     <div style="font-size:10px; color:#666; text-align:right; margin-top:-5px;">(0 = Deaktiviert)</div> 
         <!-- ... vorheriger Code (Screensaver input) ... -->
 
+        <!-- NEU: VOICE CONFIRM TOGGLE -->
+    <div class="setting-row" style="margin-top: 10px; border-top: 1px dashed #444; padding-top: 10px;">
+        <label>Vor Senden fragen? (Sprachnachricht)</label>
+        <input type="checkbox" id="checkVoiceConfirm" style="width:20px; height:20px;">
+    </div>
+    <div style="font-size:10px; color:#666; text-align:right; margin-top:-5px;">(Aus = Sofort senden nach Stop)</div>
+
           <!-- === NEU: ZEITRAUM BEGRENZUNG === -->
     <div class="setting-row" style="margin-top: 10px; border-top: 1px dashed #444; padding-top: 10px;">
         <label>Nur Nachrichten der letzten (Tage):</label>
@@ -1593,6 +1600,9 @@ function goDark() {
         const saverInput = document.getElementById('numSaverTime');
         if(saverInput) saverInput.value = uiConf.screensaverMin || 0;
 
+        // Checkbox für Voice Message ohne Zusatz-Abfrage status laden (Default: false -> also NICHT fragen)
+       document.getElementById('checkVoiceConfirm').checked = uiConf.confirmVoice || false;
+
         // Device ID laden
         document.getElementById('inputDeviceId').value = config.deviceId || "";
     }
@@ -1618,6 +1628,9 @@ function goDark() {
             uiConf.zoomTime = parseInt(document.getElementById('numZoomTime').value) || 10;
             uiConf.restartTime = document.getElementById('inputRestartTime').value;
 
+// Checkbox status speichern
+           uiConf.confirmVoice = document.getElementById('checkVoiceConfirm').checked;
+            
             uiConf.lat = document.getElementById('inputLat').value;
             uiConf.lon = document.getElementById('inputLon').value;
             
@@ -2360,23 +2373,39 @@ async function loadInternetContent() {
 }
 
 
-// === VOICE RECORDER LOGIC (ENCRYPTED) ===
+// === VOICE RECORDER LOGIC (OMA OPTIMIZED) ===
 let mediaRecorder = null;
 let audioChunks = [];
 let recInterval = null;
 let recSeconds = 0;
 let recordedBlob = null;
+let voiceIdleTimer = null; // Timer für automatisches Schließen
 
 // 1. UI Öffnen
 function openVoiceUI() {
-    document.getElementById('voiceModal').style.flex = 'flex'; // Flex statt Block für Zentrierung
+    document.getElementById('voiceModal').style.flex = 'flex'; 
     document.getElementById('voiceModal').style.display = 'flex';
     resetRecUI();
+    
+    // NEU: Timer starten - nach 60 Sek Inaktivität schließen
+    startVoiceIdleTimer();
 }
 
 function closeVoiceUI() {
     if(mediaRecorder && mediaRecorder.state === "recording") stopRecording();
     document.getElementById('voiceModal').style.display = 'none';
+    
+    // Timer aufräumen
+    clearTimeout(voiceIdleTimer);
+}
+
+// Hilfsfunktion: Timer starten (60 Sekunden)
+function startVoiceIdleTimer() {
+    clearTimeout(voiceIdleTimer);
+    voiceIdleTimer = setTimeout(() => {
+        console.log("Voice Modal Timeout - Schließe automatisch");
+        closeVoiceUI();
+    }, 60000); // 60000 ms = 60 Sekunden
 }
 
 function resetRecUI() {
@@ -2386,6 +2415,9 @@ function resetRecUI() {
     document.getElementById('recTimer').innerText = "00:00";
     document.getElementById('recStatus').innerText = "Bereit?";
     
+    // Timer neu starten (falls User "Reset" gedrückt hat)
+    startVoiceIdleTimer();
+
     // OMA FREUNDLICHER START BUTTON
     document.getElementById('recBtns').innerHTML = `
         <button class="btn-rec btn-start" onclick="startRecording()">
@@ -2397,17 +2429,35 @@ function resetRecUI() {
 
 // 2. Aufnahme Starten
 async function startRecording() {
+    // Sobald Oma drückt: Idle Timer stoppen! Sie ist ja aktiv.
+    clearTimeout(voiceIdleTimer);
+
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        mediaRecorder = new MediaRecorder(stream); // Standard Format (WebM)
+        mediaRecorder = new MediaRecorder(stream); 
         
         mediaRecorder.ondataavailable = event => {
             audioChunks.push(event.data);
         };
 
+        // HIER IST DIE LOGIK FÜR SOFORTIGES SENDEN
         mediaRecorder.onstop = () => {
             recordedBlob = new Blob(audioChunks, { type: 'audio/webm' });
-            showSendUI();
+            
+            // Entscheidung: Fragen oder Sofort senden?
+            // uiConf.confirmVoice == true -> FRAGEN
+            // uiConf.confirmVoice == false (oder undefined) -> SOFORT SENDEN
+            if (uiConf.confirmVoice) {
+                showSendUI(); // Alte Methode (Fragen)
+            } else {
+                // Neue Methode: Sofort senden!
+                // UI Feedback geben, dass was passiert
+                document.getElementById('recStatus').innerText = "Sende Nachricht...";
+                document.getElementById('recBtns').innerHTML = ""; // Buttons weg, damit sie nicht nochmal drückt
+                
+                // Direkt die Sende-Funktion aufrufen
+                encryptAndUploadVoice();
+            }
         };
 
         mediaRecorder.start();
@@ -2421,7 +2471,7 @@ async function startRecording() {
             </button>
         `;
         
-        // Timer starten
+        // Aufnahme-Dauer Timer
         recInterval = setInterval(() => {
             recSeconds++;
             const s = recSeconds < 10 ? "0"+recSeconds : recSeconds;
@@ -2439,16 +2489,19 @@ async function startRecording() {
 function stopRecording() {
     if(mediaRecorder && mediaRecorder.state !== "inactive") {
         mediaRecorder.stop();
-        mediaRecorder.stream.getTracks().forEach(track => track.stop()); // Mic freigeben
+        mediaRecorder.stream.getTracks().forEach(track => track.stop()); 
     }
     clearInterval(recInterval);
 }
 
-// 4. Senden UI anzeigen
+// 4. Senden UI anzeigen (Nur wenn Checkbox aktiv ist!)
 function showSendUI() {
     document.getElementById('recStatus').innerText = "Aufnahme fertig!";
     
-    // OMA FREUNDLICHER SENDEN SCREEN
+    // Wenn wir hier sind, ist der Idle Timer aus. 
+    // Wir könnten ihn neu starten falls sie einschläft vor dem "Abschicken" drücken,
+    // aber "Sofort Senden" ist ja der Standard, daher lassen wir das hier simpel.
+
     document.getElementById('recBtns').innerHTML = `
         <button class="btn-reset-small" onclick="resetRecUI()">↺</button>
         
@@ -2459,43 +2512,37 @@ function showSendUI() {
     `;
 }
 
-
-// 5. Verschlüsseln & Hochladen
+// 5. Verschlüsseln & Hochladen (Bleibt fast gleich, wird aber jetzt automatisch aufgerufen)
 async function encryptAndUploadVoice() {
     if(!recordedBlob || !config.ghToken) return;
     
     document.getElementById('recStatus').innerText = "Verschlüssele & Sende...";
     
-    // A. Blob zu Base64 konvertieren
     const reader = new FileReader();
     reader.readAsDataURL(recordedBlob); 
     reader.onloadend = async function() {
         const base64Audio = reader.result;
         
-        // B. Payload bauen
         const payload = {
-            sender: "Oma", // Fester Absender
+            sender: "Oma", 
             ts: Date.now(),
             audio: base64Audio
         };
         
-        // C. VERSCHLÜSSELN
         const encryptedContent = await encryptStr(JSON.stringify(payload), config.pass);
         
         if(!encryptedContent) {
             alert("Fehler bei Verschlüsselung!");
+            closeVoiceUI(); // Schließen bei Fehler
             return;
         }
         
-        // D. Wrapper für Upload bauen
         const uploadObj = {
             sender: "Oma",
             ts: payload.ts,
             enc: encryptedContent
         };
         
-        // E. Hochladen zu GitHub (Neue Datei pro Nachricht)
-        // === HIER IST DIE ÄNDERUNG: PREFIX "oma_" HINZUFÜGEN ===
         const filename = `voice_inbox/oma_voice_${payload.ts}.json`;
         const url = `https://api.github.com/repos/${config.ghUser}/${config.ghRepo}/contents/${filename}`;
         
@@ -2516,12 +2563,15 @@ async function encryptAndUploadVoice() {
             
             if(resp.ok) {
                 document.getElementById('recStatus').innerText = "Gesendet! ✅";
+                // Etwas schneller schließen bei Auto-Send (2s warten)
                 setTimeout(closeVoiceUI, 2000);
             } else {
                 alert("Upload Fehler: " + resp.status);
+                closeVoiceUI();
             }
         } catch(e) {
             alert("Netzwerk Fehler: " + e);
+            closeVoiceUI();
         }
     };
 }
