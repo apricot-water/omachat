@@ -2582,7 +2582,7 @@ function showSendUI() {
     `;
 }
 
-// 5. Verschlüsseln & Hochladen
+// 5. Verschlüsseln & Hochladen (Empfänger Version)
 async function encryptAndUploadVoice() {
     if(!recordedBlob || !config.ghToken) {
         handleVoiceError("Keine Aufnahme.");
@@ -2654,7 +2654,6 @@ async function encryptAndUploadVoice() {
         }
     };
 }
-
 // NEU: Hilfsfunktion für sanfte Fehleranzeige bei Oma
 function handleVoiceError(msg) {
     // 1. Status Text ändern (statt Alert)
