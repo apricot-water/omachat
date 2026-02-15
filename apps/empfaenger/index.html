@@ -2427,36 +2427,44 @@ function resetRecUI() {
     `;
 }
 
+
 // 2. Aufnahme Starten
 async function startRecording() {
-    // Sobald Oma drückt: Idle Timer stoppen! Sie ist ja aktiv.
-    clearTimeout(voiceIdleTimer);
+    clearTimeout(voiceIdleTimer); // Idle Timer aus
 
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        mediaRecorder = new MediaRecorder(stream); 
+        // Wir versuchen, eine bitrate zu setzen, damit die Datei nicht unnötig riesig wird
+        const options = { mimeType: 'audio/webm;codecs=opus', audioBitsPerSecond: 16000 };
+        
+        // Fallback falls der Browser die Optionen nicht mag
+        try {
+            mediaRecorder = new MediaRecorder(stream, options);
+        } catch(e) {
+            mediaRecorder = new MediaRecorder(stream);
+        }
         
         mediaRecorder.ondataavailable = event => {
-            audioChunks.push(event.data);
+            if (event.data.size > 0) {
+                audioChunks.push(event.data);
+            }
         };
 
-        // HIER IST DIE LOGIK FÜR SOFORTIGES SENDEN
         mediaRecorder.onstop = () => {
             recordedBlob = new Blob(audioChunks, { type: 'audio/webm' });
             
-            // Entscheidung: Fragen oder Sofort senden?
-            // uiConf.confirmVoice == true -> FRAGEN
-            // uiConf.confirmVoice == false (oder undefined) -> SOFORT SENDEN
+            // AUTOMATISCHES SENDEN LOGIK
             if (uiConf.confirmVoice) {
-                showSendUI(); // Alte Methode (Fragen)
+                showSendUI(); 
             } else {
-                // Neue Methode: Sofort senden!
-                // UI Feedback geben, dass was passiert
-                document.getElementById('recStatus').innerText = "Sende Nachricht...";
-                document.getElementById('recBtns').innerHTML = ""; // Buttons weg, damit sie nicht nochmal drückt
+                // UI Feedback sofort geben
+                document.getElementById('recStatus').innerText = "Bereite Versand vor...";
+                document.getElementById('recBtns').innerHTML = ""; // Buttons weg
                 
-                // Direkt die Sende-Funktion aufrufen
-                encryptAndUploadVoice();
+                // Kurze Pause (100ms), damit der Blob sicher fertig im Speicher liegt
+                setTimeout(() => {
+                    encryptAndUploadVoice();
+                }, 100);
             }
         };
 
@@ -2471,20 +2479,37 @@ async function startRecording() {
             </button>
         `;
         
-        // Aufnahme-Dauer Timer
+        // Timer starten
         recInterval = setInterval(() => {
             recSeconds++;
             const s = recSeconds < 10 ? "0"+recSeconds : recSeconds;
             document.getElementById('recTimer').innerText = "00:" + s;
-            if(recSeconds >= 60) stopRecording(); // Max 60 sek
+            
+            // BEI 60 SEKUNDEN: Automatisch stoppen
+            if(recSeconds >= 60) {
+                stopRecording(); 
+            }
         }, 1000);
 
     } catch(e) {
-        alert("Mikrofon Zugriff verweigert oder Fehler: " + e);
-        closeVoiceUI();
+        // Hier darf ein Alert sein, weil das Mikrofon kaputt ist (Hardware Fehler)
+        // Das passiert bevor Oma überhaupt spricht.
+        console.error(e);
+        document.getElementById('recStatus').innerText = "Mikrofon Fehler!";
+        setTimeout(closeVoiceUI, 3000);
     }
 }
 
+// 3. Aufnahme Stoppen
+function stopRecording() {
+    if(mediaRecorder && mediaRecorder.state !== "inactive") {
+        mediaRecorder.stop();
+        // WICHTIG: Tracks stoppen, damit das rote "Aufnahme"-Symbol im Browser ausgeht
+        mediaRecorder.stream.getTracks().forEach(track => track.stop()); 
+    }
+    clearInterval(recInterval);
+}
+    
 // 3. Aufnahme Stoppen
 function stopRecording() {
     if(mediaRecorder && mediaRecorder.state !== "inactive") {
@@ -2512,69 +2537,109 @@ function showSendUI() {
     `;
 }
 
-// 5. Verschlüsseln & Hochladen (Bleibt fast gleich, wird aber jetzt automatisch aufgerufen)
+// 5. Verschlüsseln & Hochladen
 async function encryptAndUploadVoice() {
-    if(!recordedBlob || !config.ghToken) return;
+    // Sicherheitscheck: Haben wir überhaupt Daten?
+    if(!recordedBlob || !config.ghToken) {
+        handleVoiceError("Keine Aufnahme gefunden.");
+        return;
+    }
     
     document.getElementById('recStatus').innerText = "Verschlüssele & Sende...";
     
-    const reader = new FileReader();
-    reader.readAsDataURL(recordedBlob); 
-    reader.onloadend = async function() {
-        const base64Audio = reader.result;
+    try {
+        const reader = new FileReader();
+        reader.readAsDataURL(recordedBlob); 
         
-        const payload = {
-            sender: "Oma", 
-            ts: Date.now(),
-            audio: base64Audio
-        };
-        
-        const encryptedContent = await encryptStr(JSON.stringify(payload), config.pass);
-        
-        if(!encryptedContent) {
-            alert("Fehler bei Verschlüsselung!");
-            closeVoiceUI(); // Schließen bei Fehler
-            return;
-        }
-        
-        const uploadObj = {
-            sender: "Oma",
-            ts: payload.ts,
-            enc: encryptedContent
-        };
-        
-        const filename = `voice_inbox/oma_voice_${payload.ts}.json`;
-        const url = `https://api.github.com/repos/${config.ghUser}/${config.ghRepo}/contents/${filename}`;
-        
-        const contentBase64 = btoa(unescape(encodeURIComponent(JSON.stringify(uploadObj, null, 2))));
-        
-        try {
-            const resp = await fetch(url, {
-                method: 'PUT',
-                headers: { 
-                    'Authorization': `Bearer ${config.ghToken}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    message: "New Voice from Oma",
-                    content: contentBase64
-                })
-            });
+        reader.onloadend = async function() {
+            const base64Audio = reader.result;
             
-            if(resp.ok) {
-                document.getElementById('recStatus').innerText = "Gesendet! ✅";
-                // Etwas schneller schließen bei Auto-Send (2s warten)
-                setTimeout(closeVoiceUI, 2000);
-            } else {
-                alert("Upload Fehler: " + resp.status);
-                closeVoiceUI();
+            // Payload bauen
+            const payload = {
+                sender: "Oma", 
+                ts: Date.now(),
+                audio: base64Audio
+            };
+            
+            // VERSCHLÜSSELUNG VERSUCHEN
+            let encryptedContent = null;
+            try {
+                encryptedContent = await encryptStr(JSON.stringify(payload), config.pass);
+            } catch(e) {
+                console.error("Encryption Crash:", e);
+                // Kein Alert, sondern Fehlerbehandlung unten
             }
-        } catch(e) {
-            alert("Netzwerk Fehler: " + e);
-            closeVoiceUI();
-        }
-    };
+            
+            // Wenn Verschlüsselung fehlschlug (z.B. Datei zu groß für RAM)
+            if(!encryptedContent) {
+                handleVoiceError("Datei zu groß oder Fehler.");
+                return;
+            }
+            
+            const uploadObj = {
+                sender: "Oma",
+                ts: payload.ts,
+                enc: encryptedContent
+            };
+            
+            const filename = `voice_inbox/oma_voice_${payload.ts}.json`;
+            const url = `https://api.github.com/repos/${config.ghUser}/${config.ghRepo}/contents/${filename}`;
+            
+            const contentBase64 = btoa(unescape(encodeURIComponent(JSON.stringify(uploadObj, null, 2))));
+            
+            try {
+                const resp = await fetch(url, {
+                    method: 'PUT',
+                    headers: { 
+                        'Authorization': `Bearer ${config.ghToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        message: "New Voice from Oma",
+                        content: contentBase64
+                    })
+                });
+                
+                if(resp.ok) {
+                    document.getElementById('recStatus').innerText = "Gesendet! ✅";
+                    setTimeout(closeVoiceUI, 2000);
+                } else {
+                    console.error("Server Error:", resp.status);
+                    handleVoiceError("Server Problem.");
+                }
+            } catch(e) {
+                console.error("Network Error:", e);
+                handleVoiceError("Kein Internet?");
+            }
+        };
+        
+        reader.onerror = () => handleVoiceError("Lesefehler.");
+
+    } catch(globalEx) {
+        console.error("Global Voice Error:", globalEx);
+        handleVoiceError("Unbekannter Fehler.");
+    }
 }
+
+// NEU: Hilfsfunktion für sanfte Fehleranzeige bei Oma
+function handleVoiceError(msg) {
+    // 1. Status Text ändern (statt Alert)
+    document.getElementById('recStatus').innerText = "Hoppla, das hat nicht geklappt.";
+    document.getElementById('recTimer').innerText = "❌"; // Visuelles Feedback
+
+    // 2. Buttons zurücksetzen -> Sie kann es einfach nochmal probieren (Reset)
+    // Wir bieten hier den "Reset" Button groß an, damit sie intuitiv neu anfängt.
+    document.getElementById('recBtns').innerHTML = `
+        <button class="btn-rec" style="background: #e67e22;" onclick="resetRecUI()">
+            <span style="font-size: 5vh">↺</span>
+            <span>Nochmal versuchen</span>
+        </button>
+    `;
+    
+    // Debug info in Konsole
+    console.log("Voice Error gefangen:", msg);
+}
+    
   // === VOICE PLAYBACK LOGIC ===
     let activeAudio = null;
     let wasSlideshowActive = false;
