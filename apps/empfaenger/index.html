@@ -605,42 +605,66 @@
         100% { box-shadow: 0 0 0 0 rgba(232, 65, 24, 0); } 
     }
 
-    /* === VOICE MESSAGE PLAYER === */
+  /* === VOICE MESSAGE PLAYER (OMA EDITION) === */
     #voiceContainer {
-        display: none; /* Standardmäßig aus */
+        display: none; 
         width: 100%; height: 100%;
         flex-direction: column;
         align-items: center; justify-content: center;
+        text-align: center;
     }
     
     #btnPlayVoice {
-        width: 25vh; height: 25vh;
-        border-radius: 50%;
-        background: linear-gradient(135deg, #0984e3, #00cec9);
+        width: 90%; 
+        max-width: 600px;
+        padding: 40px 20px;
+        border-radius: 30px; /* Abgerundetes Rechteck */
+        
+        /* Knalliges Grün für "Hier drücken" */
+        background: linear-gradient(135deg, #4cd137, #44bd32);
         border: 4px solid white;
-        color: white; font-size: 8vh;
+        color: white; 
+        
+        display: flex; flex-direction: column; align-items: center; gap: 10px;
         cursor: pointer;
-        display: flex; align-items: center; justify-content: center;
-        box-shadow: 0 0 50px rgba(9, 132, 227, 0.6);
-        transition: transform 0.2s;
+        box-shadow: 0 10px 30px rgba(76, 209, 55, 0.4);
+        transition: transform 0.1s;
     }
-    #btnPlayVoice:active { transform: scale(0.95); }
+    #btnPlayVoice:active { transform: scale(0.95); background: #44bd32; }
     
-    /* Animation während des Abspielens */
+    /* Text im Button */
+    .voice-btn-icon { font-size: 8vh; }
+    .voice-btn-text { font-size: 3.5vh; font-weight: bold; font-family: sans-serif; text-transform: uppercase; }
+
+    /* Wenn es abspielt: Rot werden */
     #btnPlayVoice.playing {
+        background: linear-gradient(135deg, #e84118, #c23616);
+        box-shadow: 0 10px 30px rgba(232, 65, 24, 0.4);
         animation: pulseVoice 1.5s infinite;
-        background: #e84118; /* Rot während Abspielen */
-        border-color: #ff7675;
     }
     
-    #voiceHint {
-        margin-top: 30px; font-size: 3vh; color: #ccc; text-align: center;
+    /* Die Info unter dem Button (Unterscheidungsmerkmal) */
+    #voiceMetaInfo {
+        margin-top: 40px; 
+        font-size: 3vh; 
+        color: #bbb; 
+        font-weight: normal;
+    }
+    
+    /* Extra fett für die Uhrzeit */
+    .voice-time-big {
+        display: block;
+        font-size: 5vh;
+        color: white;
+        font-weight: bold;
+        margin-top: 10px;
+        color: var(--accent);
     }
 
     @keyframes pulseVoice {
-        0% { box-shadow: 0 0 0 0 rgba(232, 65, 24, 0.7); }
-        70% { box-shadow: 0 0 0 30px rgba(232, 65, 24, 0); }
-        100% { box-shadow: 0 0 0 0 rgba(232, 65, 24, 0); }
+        0% { box-shadow: 0 0 0 0 rgba(232, 65, 24, 0.7); } 
+        70% { box-shadow: 0 0 0 20px rgba(232, 65, 24, 0); } 
+        100% { box-shadow: 0 0 0 0 rgba(232, 65, 24, 0); } 
     }
     
 </style>
@@ -720,13 +744,21 @@
         <img id="messageImg" src="" onclick="openLightbox()">
         <div id="messageText">Lade Archiv...</div>
 
-        <!-- NEU: Sprachnachrichten Container -->
+        <!-- NEU: Sprachnachrichten Container (Oma-Optimiert) -->
         <div id="voiceContainer">
-            <button id="btnPlayVoice" onclick="playCurrentVoice()">▶</button>
-            <div id="voiceHint">Sprachnachricht antippen</div>
+            <button id="btnPlayVoice" onclick="playCurrentVoice()">
+                <span id="voiceIcon" class="voice-btn-icon">🔊</span>
+                <span id="voiceLabel" class="voice-btn-text">Hier drücken<br>zum Anhören</span>
+            </button>
+            
+            <!-- Unterscheidungsmerkmal -->
+            <div id="voiceMetaInfo">
+                Nachricht vom <span id="voiceDateVal">...</span>
+                <span id="voiceTimeVal" class="voice-time-big">...</span>
+            </div>
         </div>
     </div>
-
+    
     <!-- Sichtbare Pfeile -->
     <div id="btnPrev" class="nav-zone" onclick="prevMsg()">❮</div>
     <div id="btnNext" class="nav-zone" onclick="nextMsg()">❯</div>
@@ -1889,44 +1921,49 @@ function checkNightMode() {
             return;
         }
         
-        const msg = messages[currentIndex];
+          const msg = messages[currentIndex];
         
-        // Header Infos setzen
+        // 1. Header Infos setzen (Das behebt das "Oma" Problem im Header)
+        // msg.sender kommt direkt aus dem JSON vom Sender. 
+        // Wenn da "Papa" drin stand, steht hier jetzt "Papa".
         document.getElementById('metaSender').innerText = msg.sender;
+        
         const smart = getSmartDate(msg.timestamp);
         document.getElementById('metaTime').innerText = smart.day;
         document.getElementById('metaDate').innerText = smart.time;
 
-        // UI Elemente holen
+        // UI Elemente
         const txtEl = document.getElementById('messageText');
         const imgEl = document.getElementById('messageImg');
         const voiceEl = document.getElementById('voiceContainer');
         const btnVoice = document.getElementById('btnPlayVoice');
 
-        // Reset Voice Button (falls er noch rot war)
+        // Reset Voice Button
         btnVoice.classList.remove('playing');
-        btnVoice.innerText = "▶";
+        document.getElementById('voiceIcon').innerText = "🔊";
+        document.getElementById('voiceLabel').innerHTML = "Hier drücken<br>zum Anhören";
 
-        // === ENTSCHEIDUNG: VOICE ODER NORMAL? ===
         if (msg.isVoice) {
-            // VOICE MODUS
+            // === VOICE MODUS ===
             txtEl.style.display = 'none';
             imgEl.style.display = 'none';
-            voiceEl.style.display = 'flex'; // Zeigen
+            voiceEl.style.display = 'flex';
             
-            // WICHTIG: Wenn Slideshow läuft und wir auf eine Sprachnachricht treffen: STOPPEN!
-            // Wir wollen nicht, dass sie automatisch übersprungen wird oder automatisch losbrüllt.
-            if (slideTimer) {
-                toggleSlideshow(); // Schaltet Slideshow aus
-            }
+            // Zusatz-Infos füllen (Datum & Uhrzeit groß)
+            // Das hilft Oma zu sehen: "Ah, das ist die von 14:05 Uhr"
+            const dateObj = new Date(msg.timestamp);
+            document.getElementById('voiceDateVal').innerText = dateObj.toLocaleDateString();
+            document.getElementById('voiceTimeVal').innerText = dateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + " Uhr";
+
+            // Slideshow stoppen bei Sprachnachricht
+            if (slideTimer) toggleSlideshow();
 
         } else {
-            // NORMALER MODUS (Text / Bild)
+            // === NORMALER MODUS ===
             voiceEl.style.display = 'none';
             txtEl.style.display = 'block';
             
             txtEl.innerText = msg.text || "";
-            
             if(msg.image) {
                 imgEl.src = msg.image; 
                 imgEl.style.display = 'block';
@@ -2430,7 +2467,7 @@ async function encryptAndUploadVoice() {
     };
 }
 
-    // === VOICE PLAYBACK LOGIC ===
+  // === VOICE PLAYBACK LOGIC ===
     let activeAudio = null;
     let wasSlideshowActive = false;
 
@@ -2439,57 +2476,52 @@ async function encryptAndUploadVoice() {
         if(!msg.isVoice || !msg.audio) return;
 
         const btn = document.getElementById('btnPlayVoice');
-        const hint = document.getElementById('voiceHint');
+        const icon = document.getElementById('voiceIcon');
+        const label = document.getElementById('voiceLabel');
 
-        // Wenn schon läuft -> Stop
+        // STOPPEN
         if (activeAudio) {
             activeAudio.pause();
             activeAudio = null;
             btn.classList.remove('playing');
-            btn.innerText = "▶";
-            hint.innerText = "Pausiert";
+            icon.innerText = "🔊";
+            label.innerHTML = "Fortsetzen"; // Feedback
             return;
         }
 
-        // Slideshow Status merken & Stoppen
+        // Slideshow Status merken
         if (slideTimer) {
             wasSlideshowActive = true;
-            toggleSlideshow(); // Stop (UI Update handled by toggleSlideshow)
+            toggleSlideshow();
         } else {
-            wasSlideshowActive = false; // War eh aus
+            wasSlideshowActive = false;
         }
 
-        // Audio starten
+        // STARTEN
         activeAudio = new Audio(msg.audio);
         activeAudio.play();
         
-        // UI Update
+        // UI Update (Rot & Text ändern)
         btn.classList.add('playing');
-        btn.innerText = "🔊"; // Lautsprecher Icon
-        hint.innerText = "Spiele ab...";
+        icon.innerText = "👂"; 
+        label.innerHTML = "Ich höre zu...";
 
-        // Wenn fertig
+        // ENDE
         activeAudio.onended = () => {
             activeAudio = null;
             btn.classList.remove('playing');
-            btn.innerText = "↺"; // Wiederholen Icon
-            hint.innerText = "Fertig! Weiter in 5s...";
+            icon.innerText = "✅";
+            label.innerHTML = "Fertig!<br>Nochmal?";
             
-            // Wenn Slideshow vorher an war -> Fortsetzen nach 5 Sekunden
-            // ODER wenn Oma einfach so hört, können wir zum nächsten springen
             setTimeout(() => {
-                if (wasSlideshowActive) {
-                    toggleSlideshow(); // Wieder an
-                } else {
-                    // Optional: Einfach zur nächsten Nachricht springen
-                    // nextMsg(); 
-                }
-                hint.innerText = "Sprachnachricht antippen";
-                btn.innerText = "▶";
+                if (wasSlideshowActive) toggleSlideshow();
+                // Nach 5 Sek wieder neutraler Text
+                icon.innerText = "🔊";
+                label.innerHTML = "Hier drücken<br>zum Anhören";
             }, 5000);
         };
     }
-
+    
     // === NEU: SPRACHNACHRICHTEN VON GITHUB LADEN ===
     async function loadVoiceInbox() {
         if (!config.ghUser || !config.ghRepo || !config.ghToken) return;
