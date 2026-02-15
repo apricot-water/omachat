@@ -2429,27 +2429,39 @@ function resetRecUI() {
 
 
 // 2. Aufnahme Starten (High Performance Mode)
+// 2. Aufnahme Starten (Mono + 32kbit/s Fix)
 async function startRecording() {
-    clearTimeout(voiceIdleTimer); // Idle Timer aus
+    // Falls vorhanden, Idle Timer stoppen (nur Empfänger Seite relevant, stört beim Sender nicht)
+    if(typeof voiceIdleTimer !== 'undefined') clearTimeout(voiceIdleTimer);
 
     try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        // CONSTRAINT FIX: Wir erzwingen MONO Audio. 
+        // Stereo verdoppelt die Datenmenge unnötig für Sprache.
+        const constraints = { 
+            audio: { 
+                channelCount: 1, 
+                echoCancellation: true, 
+                noiseSuppression: true,
+                autoGainControl: true
+            } 
+        };
+
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
         
-        // PERFORMANCE FIX: 
-        // 1. Wir nutzen Opus Codec (sehr effizient)
-        // 2. Wir setzen die Bitrate auf 16000 (reicht völlig für Stimme, spart 90% Speicher!)
+        // OPTION FIX: Wir nutzen 32 kbit/s. 
+        // Das klingt deutlich besser als 16k, ist aber immer noch klein genug für 60s (ca. 240KB).
         const options = { 
             mimeType: 'audio/webm;codecs=opus', 
-            audioBitsPerSecond: 16000 
+            audioBitsPerSecond: 32000 
         };
         
-        // Fallback für Browser, die 'codecs=opus' nicht explizit verstehen
-        if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-            console.log("Opus nicht unterstützt, nutze Standard.");
-            // Wir versuchen trotzdem, die Bitrate niedrig zu halten
-            mediaRecorder = new MediaRecorder(stream, { audioBitsPerSecond: 16000 });
-        } else {
+        // Browser-Check
+        if (MediaRecorder.isTypeSupported(options.mimeType)) {
             mediaRecorder = new MediaRecorder(stream, options);
+        } else {
+            console.log("Opus Codec nicht unterstützt, Fallback auf Standard.");
+            // Auch im Fallback versuchen wir die Bitrate zu begrenzen
+            mediaRecorder = new MediaRecorder(stream, { audioBitsPerSecond: 32000 });
         }
         
         mediaRecorder.ondataavailable = event => {
@@ -2459,35 +2471,61 @@ async function startRecording() {
         };
 
         mediaRecorder.onstop = () => {
-            // Blob erstellen (jetzt viel kleiner dank 16kbit/s)
+            // Blob erstellen
             recordedBlob = new Blob(audioChunks, { type: 'audio/webm' });
             
-            if (uiConf.confirmVoice) {
-                showSendUI(); 
+            // Check: Ist die Datei trotzdem zu groß für GitHub? (> 950KB Sicherheitslimit)
+            if (recordedBlob.size > 950000) {
+                alert("Nachricht zu lang/groß! Bitte kürzer sprechen.");
+                // Reset UI logic hier einfügen wenn nötig
+                return;
+            }
+
+            // Unterscheidung Sender/Empfänger Logik (damit du den Code für beide nutzen kannst)
+            if (typeof uiConf !== 'undefined') {
+                // === EMPFÄNGER SEITE (Oma) ===
+                if (uiConf.confirmVoice) {
+                    showSendUI(); 
+                } else {
+                    document.getElementById('recStatus').innerText = "Bereite Versand vor...";
+                    document.getElementById('recBtns').innerHTML = ""; 
+                    setTimeout(() => encryptAndUploadVoice(), 100);
+                }
             } else {
-                document.getElementById('recStatus').innerText = "Bereite Versand vor...";
-                document.getElementById('recBtns').innerHTML = ""; 
-                
-                // Kurze Pause für die CPU
-                setTimeout(() => {
-                    encryptAndUploadVoice();
-                }, 100);
+                // === SENDER SEITE (Du) ===
+                showSendUI(); // Sender bestätigt immer manuell
             }
         };
 
-        // WICHTIG: Time-Slice Parameter (1000ms)
-        // Das zwingt den Browser, den Speicher jede Sekunde zu leeren 
-        // und in unser Array zu schieben. Verhindert RAM-Überlauf!
+        // Time-Slice: Alle 1000ms Daten wegschreiben (verhindert RAM Absturz)
         mediaRecorder.start(1000);
         
-        // UI Update: STOP BUTTON
+        // UI Updates (Buttons etc.)
         document.getElementById('recStatus').innerText = "Ich höre zu...";
-        document.getElementById('recBtns').innerHTML = `
-            <button class="btn-rec btn-stop" onclick="stopRecording()">
-                <span style="font-size: 5vh">⏹</span>
-                <span>Fertig / Stop</span>
-            </button>
-        `;
+        
+        // Button HTML unterscheidet sich leicht zwischen Sender/Empfänger CSS, 
+        // aber die Logik ist gleich. Wir nutzen hier das generische HTML:
+        const btnHtml = `<button class="btn-rec btn-stop" onclick="stopRecording()"><span style="font-size:30px">⏹</span> Fertig</button>`;
+        
+        // Prüfen wo wir sind (Sender oder Empfänger hat unterschiedliche IDs für Buttons manchmal)
+        if(document.getElementById('recBtns')) {
+           // Empfänger HTML nutzt spezielles Styling, Sender HTML nutzt einfaches.
+           // Wir lassen das Styling vom jeweiligen File, rufen nur stopRecording auf.
+           // HINWEIS: Du musst hier nichts ändern, wenn dein Button HTML schon passt.
+           // Der wichtige Teil ist oben der mediaRecorder Code.
+           
+           // Für Empfänger (Oma) erzwingen wir das große rote Stop-Symbol:
+           if(typeof uiConf !== 'undefined') {
+               document.getElementById('recBtns').innerHTML = `
+                <button class="btn-rec btn-stop" onclick="stopRecording()">
+                    <span style="font-size: 5vh">⏹</span>
+                    <span>Fertig / Stop</span>
+                </button>`;
+           } else {
+               // Für Sender (Dich)
+               document.getElementById('recBtns').innerHTML = `<button class="btn-rec btn-stop" style="background:#e84118" onclick="stopRecording()">⏹ Stop</button>`;
+           }
+        }
         
         // Timer
         recInterval = setInterval(() => {
@@ -2503,11 +2541,10 @@ async function startRecording() {
     } catch(e) {
         console.error(e);
         document.getElementById('recStatus').innerText = "Mikrofon Fehler!";
-        // Automatisch schließen nach 3s, damit Oma nicht feststeckt
-        setTimeout(closeVoiceUI, 3000);
+        if(typeof closeVoiceUI === 'function') setTimeout(closeVoiceUI, 3000);
     }
 }
-
+    
 // 3. Aufnahme Stoppen
 function stopRecording() {
     if(mediaRecorder && mediaRecorder.state !== "inactive") {
@@ -2547,43 +2584,41 @@ function showSendUI() {
 
 // 5. Verschlüsseln & Hochladen
 async function encryptAndUploadVoice() {
-    // Sicherheitscheck: Haben wir überhaupt Daten?
     if(!recordedBlob || !config.ghToken) {
-        handleVoiceError("Keine Aufnahme gefunden.");
+        handleVoiceError("Keine Aufnahme.");
         return;
     }
     
+    // FINALER GRÖSSEN-CHECK
+    if(recordedBlob.size > 1000000) { // 1MB Limit
+        handleVoiceError("Zu lange gesprochen (Datei zu groß).");
+        return;
+    }
+
     document.getElementById('recStatus').innerText = "Verschlüssele & Sende...";
     
-    try {
-        const reader = new FileReader();
-        reader.readAsDataURL(recordedBlob); 
-        
-        reader.onloadend = async function() {
+    const reader = new FileReader();
+    reader.readAsDataURL(recordedBlob); 
+    reader.onloadend = async function() {
+        try {
             const base64Audio = reader.result;
             
-            // Payload bauen
             const payload = {
                 sender: "Oma", 
                 ts: Date.now(),
                 audio: base64Audio
             };
             
-            // VERSCHLÜSSELUNG VERSUCHEN
-            let encryptedContent = null;
-            try {
-                encryptedContent = await encryptStr(JSON.stringify(payload), config.pass);
-            } catch(e) {
-                console.error("Encryption Crash:", e);
-                // Kein Alert, sondern Fehlerbehandlung unten
-            }
+            // Versuch Verschlüsselung
+            const encryptedContent = await encryptStr(JSON.stringify(payload), config.pass);
             
-            // Wenn Verschlüsselung fehlschlug (z.B. Datei zu groß für RAM)
-            if(!encryptedContent) {
-                handleVoiceError("Datei zu groß oder Fehler.");
-                return;
-            }
+            if(!encryptedContent) throw new Error("Encryption Failed");
             
+            // Check: Ist der verschlüsselte String zu lang für GitHub? (ca 1.3 fache Größe)
+            if(encryptedContent.length > 1400000) { // 1.4 Mio Zeichen Limit
+                 throw new Error("Datei nach Verschlüsselung zu groß.");
+            }
+
             const uploadObj = {
                 sender: "Oma",
                 ts: payload.ts,
@@ -2595,38 +2630,29 @@ async function encryptAndUploadVoice() {
             
             const contentBase64 = btoa(unescape(encodeURIComponent(JSON.stringify(uploadObj, null, 2))));
             
-            try {
-                const resp = await fetch(url, {
-                    method: 'PUT',
-                    headers: { 
-                        'Authorization': `Bearer ${config.ghToken}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        message: "New Voice from Oma",
-                        content: contentBase64
-                    })
-                });
-                
-                if(resp.ok) {
-                    document.getElementById('recStatus').innerText = "Gesendet! ✅";
-                    setTimeout(closeVoiceUI, 2000);
-                } else {
-                    console.error("Server Error:", resp.status);
-                    handleVoiceError("Server Problem.");
-                }
-            } catch(e) {
-                console.error("Network Error:", e);
-                handleVoiceError("Kein Internet?");
+            const resp = await fetch(url, {
+                method: 'PUT',
+                headers: { 
+                    'Authorization': `Bearer ${config.ghToken}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    message: "New Voice from Oma",
+                    content: contentBase64
+                })
+            });
+            
+            if(resp.ok) {
+                document.getElementById('recStatus').innerText = "Gesendet! ✅";
+                setTimeout(closeVoiceUI, 2000);
+            } else {
+                throw new Error("Server Fehler: " + resp.status);
             }
-        };
-        
-        reader.onerror = () => handleVoiceError("Lesefehler.");
-
-    } catch(globalEx) {
-        console.error("Global Voice Error:", globalEx);
-        handleVoiceError("Unbekannter Fehler.");
-    }
+        } catch(e) {
+            console.error(e);
+            handleVoiceError("Fehler beim Senden.");
+        }
+    };
 }
 
 // NEU: Hilfsfunktion für sanfte Fehleranzeige bei Oma
