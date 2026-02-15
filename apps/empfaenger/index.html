@@ -604,6 +604,44 @@
         70% { box-shadow: 0 0 0 20px rgba(232, 65, 24, 0); } 
         100% { box-shadow: 0 0 0 0 rgba(232, 65, 24, 0); } 
     }
+
+    /* === VOICE MESSAGE PLAYER === */
+    #voiceContainer {
+        display: none; /* Standardmäßig aus */
+        width: 100%; height: 100%;
+        flex-direction: column;
+        align-items: center; justify-content: center;
+    }
+    
+    #btnPlayVoice {
+        width: 25vh; height: 25vh;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #0984e3, #00cec9);
+        border: 4px solid white;
+        color: white; font-size: 8vh;
+        cursor: pointer;
+        display: flex; align-items: center; justify-content: center;
+        box-shadow: 0 0 50px rgba(9, 132, 227, 0.6);
+        transition: transform 0.2s;
+    }
+    #btnPlayVoice:active { transform: scale(0.95); }
+    
+    /* Animation während des Abspielens */
+    #btnPlayVoice.playing {
+        animation: pulseVoice 1.5s infinite;
+        background: #e84118; /* Rot während Abspielen */
+        border-color: #ff7675;
+    }
+    
+    #voiceHint {
+        margin-top: 30px; font-size: 3vh; color: #ccc; text-align: center;
+    }
+
+    @keyframes pulseVoice {
+        0% { box-shadow: 0 0 0 0 rgba(232, 65, 24, 0.7); }
+        70% { box-shadow: 0 0 0 30px rgba(232, 65, 24, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(232, 65, 24, 0); }
+    }
     
 </style>
 </head>
@@ -677,9 +715,16 @@
         </div>
     </div>
 
-    <div id="displayArea">
+<div id="displayArea">
+        <!-- Standard Nachrichten (Bild/Text) -->
         <img id="messageImg" src="" onclick="openLightbox()">
         <div id="messageText">Lade Archiv...</div>
+
+        <!-- NEU: Sprachnachrichten Container -->
+        <div id="voiceContainer">
+            <button id="btnPlayVoice" onclick="playCurrentVoice()">▶</button>
+            <div id="voiceHint">Sprachnachricht antippen</div>
+        </div>
     </div>
 
     <!-- Sichtbare Pfeile -->
@@ -883,18 +928,14 @@ async function processAndAdd(item, silent = false) {
         let safeTs = item.ts;
         if (safeTs < 100000000000) safeTs *= 1000;
 
-            // === NEU: ALTERSPRÜFUNG ===
-        // Wenn maxDays gesetzt ist (> 0) und die Nachricht älter ist -> ABBRUCH
+        // === ALTERSPRÜFUNG (Deine existierende Logik) ===
         if (uiConf.maxDays && uiConf.maxDays > 0) {
             const diffMs = Date.now() - safeTs;
             const diffDays = diffMs / (1000 * 60 * 60 * 24);
-            
-            // Wenn Nachricht älter als X Tage ist -> Nicht laden
             if (diffDays > uiConf.maxDays) {
                 return; 
             }
         }
-        // === ENDE NEU ===
         
         // 2. ZOMBIE CHECK
         if (item.hidden || hiddenRegistry.has(safeTs)) {
@@ -906,7 +947,8 @@ async function processAndAdd(item, silent = false) {
         const exists = messages.some(m => Math.abs(m.timestamp - safeTs) < 2000);
         if (exists) return;
 
-        let plain = { sender: '?', text: 'Fehler', image: null };
+        // === NEU: Initiale Werte erweitert (audio, isVoice) ===
+        let plain = { sender: '?', text: 'Fehler', image: null, audio: null, isVoice: false };
         
         // 4. INHALT ENTSCHLÜSSELN
         if (!item.enc) return;
@@ -917,12 +959,23 @@ async function processAndAdd(item, silent = false) {
                 const content = JSON.parse(jsonStr);
                 plain.sender = content.sender;
                 plain.text = content.text;
+                
+                // === NEU: PRÜFEN OB SPRACHNACHRICHT ===
+                if (content.type === 'voice' || content.audio) {
+                    plain.isVoice = true;
+                    plain.audio = content.audio; // Das Base64 Audio
+                    
+                    // Falls kein Text dabei ist, setzen wir einen Platzhalter
+                    if (!plain.text) plain.text = "🎤 Sprachnachricht";
+                }
+                // === ENDE NEU ===
+
                 if (content.image || content.img) plain.image = content.image || content.img;
             } catch(e) { plain.text = "Format Fehler"; }
         } else { return; }
 
-        // 5. BILD LADEN
-        if (item.img) {
+        // 5. BILD LADEN (Nur wenn es KEINE Sprachnachricht ist, um Fehler zu vermeiden)
+        if (item.img && !plain.isVoice) {
             let encryptedBuffer = null;
             if (item.img.startsWith('http')) {
                 try {
@@ -942,24 +995,26 @@ async function processAndAdd(item, silent = false) {
             }
         }
 
+        // 6. ZUR LISTE HINZUFÜGEN
         messages.push({
             timestamp: safeTs,
             sender: plain.sender,
             text: plain.text,
-            image: plain.image
+            image: plain.image,
+            // === NEU: Voice Infos speichern ===
+            isVoice: plain.isVoice,
+            audio: plain.audio
         });
         
-        // === HIER IST DIE ÄNDERUNG: NEUESTE ZUERST ===
-        // b.timestamp - a.timestamp sorgt für absteigende Sortierung (Neu -> Alt)
+        // SORTIEREN: NEUESTE ZUERST
         messages.sort((a,b) => b.timestamp - a.timestamp);
         
         if (!silent) {
-            // Bei neuer Nachricht: Springe immer auf Index 0 (das ist jetzt die Neueste!)
             currentIndex = 0; 
             updateDisplay(); 
             checkNewMessage(safeTs);
         }
-    }   
+    }
     
     
     async function decryptStr(base64Data, password) {
@@ -1824,39 +1879,55 @@ function checkNightMode() {
     // === 3. UPDATE DISPLAY ===
     window.updateDisplay = function() {
         if(messages.length === 0) {
-            document.getElementById('messageText').innerText = "Keine Nachrichten.";
-            document.getElementById('messageImg').style.display = 'none';
-            document.getElementById('metaSender').innerText = "";
-            document.getElementById('metaTime').innerText = "";
-            document.getElementById('metaDate').innerText = "";
+            // ... (Dein "Keine Nachrichten" Code) ...
             return;
         }
         
         const msg = messages[currentIndex];
         
-        // Text setzen
-        document.getElementById('messageText').innerText = msg.text || "";
-        
-        // Bild setzen
-        const imgEl = document.getElementById('messageImg');
-        if(msg.image) {
-            imgEl.src = msg.image; 
-            imgEl.style.display = 'block';
-        } else {
-            imgEl.style.display = 'none';
-        }
-
-        // Header Infos füllen (Mit neuer Logik)
-        const smart = getSmartDate(msg.timestamp);
-        
-        // Zeigt "Enkel Tim"
+        // Header Infos setzen
         document.getElementById('metaSender').innerText = msg.sender;
-        
-        // Zeigt "Vorgestern" oder "Letzten Freitag" (Oben rechts)
+        const smart = getSmartDate(msg.timestamp);
         document.getElementById('metaTime').innerText = smart.day;
-        
-        // Zeigt "14:30 Uhr" (Unten rechts, kleiner)
         document.getElementById('metaDate').innerText = smart.time;
+
+        // UI Elemente holen
+        const txtEl = document.getElementById('messageText');
+        const imgEl = document.getElementById('messageImg');
+        const voiceEl = document.getElementById('voiceContainer');
+        const btnVoice = document.getElementById('btnPlayVoice');
+
+        // Reset Voice Button (falls er noch rot war)
+        btnVoice.classList.remove('playing');
+        btnVoice.innerText = "▶";
+
+        // === ENTSCHEIDUNG: VOICE ODER NORMAL? ===
+        if (msg.isVoice) {
+            // VOICE MODUS
+            txtEl.style.display = 'none';
+            imgEl.style.display = 'none';
+            voiceEl.style.display = 'flex'; // Zeigen
+            
+            // WICHTIG: Wenn Slideshow läuft und wir auf eine Sprachnachricht treffen: STOPPEN!
+            // Wir wollen nicht, dass sie automatisch übersprungen wird oder automatisch losbrüllt.
+            if (slideTimer) {
+                toggleSlideshow(); // Schaltet Slideshow aus
+            }
+
+        } else {
+            // NORMALER MODUS (Text / Bild)
+            voiceEl.style.display = 'none';
+            txtEl.style.display = 'block';
+            
+            txtEl.innerText = msg.text || "";
+            
+            if(msg.image) {
+                imgEl.src = msg.image; 
+                imgEl.style.display = 'block';
+            } else {
+                imgEl.style.display = 'none';
+            }
+        }
 
         smartLog(msg);
     };
@@ -2350,6 +2421,66 @@ async function encryptAndUploadVoice() {
         }
     };
 }
+
+    // === VOICE PLAYBACK LOGIC ===
+    let activeAudio = null;
+    let wasSlideshowActive = false;
+
+    function playCurrentVoice() {
+        const msg = messages[currentIndex];
+        if(!msg.isVoice || !msg.audio) return;
+
+        const btn = document.getElementById('btnPlayVoice');
+        const hint = document.getElementById('voiceHint');
+
+        // Wenn schon läuft -> Stop
+        if (activeAudio) {
+            activeAudio.pause();
+            activeAudio = null;
+            btn.classList.remove('playing');
+            btn.innerText = "▶";
+            hint.innerText = "Pausiert";
+            return;
+        }
+
+        // Slideshow Status merken & Stoppen
+        if (slideTimer) {
+            wasSlideshowActive = true;
+            toggleSlideshow(); // Stop (UI Update handled by toggleSlideshow)
+        } else {
+            wasSlideshowActive = false; // War eh aus
+        }
+
+        // Audio starten
+        activeAudio = new Audio(msg.audio);
+        activeAudio.play();
+        
+        // UI Update
+        btn.classList.add('playing');
+        btn.innerText = "🔊"; // Lautsprecher Icon
+        hint.innerText = "Spiele ab...";
+
+        // Wenn fertig
+        activeAudio.onended = () => {
+            activeAudio = null;
+            btn.classList.remove('playing');
+            btn.innerText = "↺"; // Wiederholen Icon
+            hint.innerText = "Fertig! Weiter in 5s...";
+            
+            // Wenn Slideshow vorher an war -> Fortsetzen nach 5 Sekunden
+            // ODER wenn Oma einfach so hört, können wir zum nächsten springen
+            setTimeout(() => {
+                if (wasSlideshowActive) {
+                    toggleSlideshow(); // Wieder an
+                } else {
+                    // Optional: Einfach zur nächsten Nachricht springen
+                    // nextMsg(); 
+                }
+                hint.innerText = "Sprachnachricht antippen";
+                btn.innerText = "▶";
+            }, 5000);
+        };
+    }
     
 </script>
 </body>
