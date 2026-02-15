@@ -2364,8 +2364,30 @@ async function fetchAndRenderVoice(fileEntry, header, container) {
         if(!resp.ok) return;
         const jsonFile = await resp.json();
         
-        const rawContent = jsonFile.content.replace(/\s/g, '');
-        const encryptedJson = JSON.parse(decodeURIComponent(escape(atob(rawContent))));
+        // === FIX START: Große Dateien (Blob API) ===
+        let rawContent = jsonFile.content;
+        
+        // Wenn content leer ist, aber eine SHA existiert -> Datei ist > 1MB
+        if (!rawContent && jsonFile.sha) {
+            console.log("Lade große Sprachnachricht via Blob...", fileEntry.name);
+            // Wir bauen die Blob-URL manuell, da fileEntry.git_url oft Auth-Probleme macht
+            // Wir nutzen die Repo-URL aus der Config
+            const blobUrl = `https://api.github.com/repos/${conf.gu}/${conf.gr}/git/blobs/${jsonFile.sha}`;
+            const blobResp = await fetch(blobUrl, { headers: header });
+            if (blobResp.ok) {
+                const blobData = await blobResp.json();
+                rawContent = blobData.content;
+            }
+        }
+
+        if (!rawContent) {
+            renderErrorItem(container, "Inhalt nicht lesbar (zu groß?)", fileEntry.name);
+            return;
+        }
+        // === FIX ENDE ===
+
+        const cleanContent = rawContent.replace(/\s/g, '');
+        const encryptedJson = JSON.parse(decodeURIComponent(escape(atob(cleanContent))));
         const decryptedStr = await decryptText(encryptedJson.enc, conf.p);
         
         if(!decryptedStr) {
@@ -2376,8 +2398,6 @@ async function fetchAndRenderVoice(fileEntry, header, container) {
         const payload = JSON.parse(decryptedStr);
         const dateStr = new Date(payload.ts).toLocaleString();
         
-        // === UPDATE: Bessere Erkennung ===
-        // Ist es von Oma? (Checkt auf neuen Prefix 'oma_voice_', alten Prefix 'voice_' oder Sendername)
         const isReply = fileEntry.name.startsWith("reply_");
         const isOma = fileEntry.name.startsWith("oma_voice_") || fileEntry.name.startsWith("voice_") || (payload.sender === "Oma" && !isReply);
         
@@ -2397,7 +2417,7 @@ async function fetchAndRenderVoice(fileEntry, header, container) {
         `;
         container.appendChild(div);
 
-    } catch(e) { console.error(e); }
+    } catch(e) { console.error("Render Error:", e); }
 }
     
 function renderErrorItem(container, msg, filename) {
