@@ -223,6 +223,34 @@
     }
     /* Versteckt das hässliche "Scan region" overlay der Library, falls es auftaucht */
     #qrReader__scan_region { display: none !important; }
+
+
+/* === VOICE TAB STYLES === */
+    .voice-card {
+        background: var(--input-bg);
+        border-radius: 12px;
+        padding: 15px;
+        margin-bottom: 15px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        border-left: 4px solid var(--accent);
+    }
+    .voice-meta {
+        display: flex; justify-content: space-between; align-items: center;
+        color: var(--text-sub); font-size: 13px;
+    }
+    audio {
+        width: 100%;
+        height: 40px;
+        margin-top: 5px;
+        border-radius: 20px; 
+    }
+    /* Dunkler Modus Anpassung für Audio Player (Chrome Standard ist oft weiß) */
+    body.dark audio {
+        filter: invert(1); /* Trick um den Player dunkel zu machen */
+    }
+    
 </style>
 </head>
 <body>
@@ -236,7 +264,7 @@
             <div class="progress-track">
                 <div id="progressBar" class="progress-bar"></div>
             </div>
-            <div id="progressPercent" style="font-size:12px; margin-top:5px; color:var(--text-sub)">0%</div>
+                <div id="progressPercent" style="font-size:12px; margin-top:5px; color:var(--text-sub)">0%</div>
         </div>
     </div>
     
@@ -263,6 +291,7 @@
         <div class="menu-item active" onclick="switchTab('send')">✍️ Schreiben</div>
         <div class="menu-item" onclick="switchTab('view')">🛠️ Nachrichten bearbeiten</div>
      <!-- FÜGE DIES NACH "Schreiben" und VOR "Nachrichten bearbeiten" EIN -->
+       <div class="menu-item" onclick="switchTab('voice')">🎤 Sprachnachrichten</div>
        <div class="menu-item" onclick="switchTab('stock')">📦 Vorrat auffüllen</div>
         <!-- NEU: Fernsteuerung -->
         <div class="menu-item" onclick="switchTab('admin')">🎮 Fernsteuerung</div>
@@ -382,6 +411,20 @@
         </div>
     </div>
 
+<!-- TAB: VOICE INBOX -->
+    <div id="tab-voice" class="tab-content">
+        <div style="padding:15px; border-bottom:1px solid var(--input-bg); display:flex; justify-content:space-between; align-items:center; background:var(--bg-card);">
+            <div style="font-weight:bold; font-size:16px;">
+                Antworten von Oma <span id="voiceCount" style="color:var(--text-sub); font-weight:normal;"></span>
+            </div>
+            <button onclick="loadVoiceMessages()" style="background:none; border:none; color:var(--accent); font-weight:bold; cursor:pointer;">↻ Laden</button>
+        </div>
+        
+        <div class="scroll-area" id="voiceList">
+            <div class="log-empty">Klicke auf Laden...</div>
+        </div>
+    </div>
+    
     <!-- TAB: FERNSTEUERUNG -->
     <div id="tab-admin" class="tab-content">
         <div class="scroll-area">
@@ -954,6 +997,13 @@ function switchTab(tab) {
             document.getElementById('pageTitle').innerText = "Aktivitäten";
             loadLogData();
         }
+
+   // === NEU EINFÜGEN: ===
+        if(tab === 'voice') {
+            document.getElementById('pageTitle').innerText = "Sprachnachrichten";
+            loadVoiceMessages();
+        }
+    
     }
 
     // QUELLE 1: GitHub (Archiv)
@@ -2185,6 +2235,148 @@ async function deleteFromStock(ts) {
     } catch(e) {
         alert("Fehler: " + e.message);
         list.style.opacity = "1";
+    }
+}
+
+// === VOICE MESSAGE LOGIC ===
+
+async function loadVoiceMessages() {
+    const list = document.getElementById('voiceList');
+    const countLabel = document.getElementById('voiceCount');
+    
+    list.innerHTML = '<div class="log-empty">⏳ Suche nach Nachrichten...</div>';
+    countLabel.innerText = "";
+
+    if(!conf.gu || !conf.gr || !conf.gt || !conf.p) {
+        list.innerHTML = '<div class="log-empty" style="color:var(--danger)">Konfiguration fehlt!</div>';
+        return;
+    }
+
+    try {
+        // 1. Ordner Inhalt abrufen
+        const url = `https://api.github.com/repos/${conf.gu}/${conf.gr}/contents/voice_inbox?t=${Date.now()}`;
+        const header = { 'Authorization': `Bearer ${conf.gt}`, 'Accept': 'application/vnd.github.v3+json' };
+        
+        const resp = await fetch(url, { headers: header });
+        
+        if(resp.status === 404) {
+            list.innerHTML = '<div class="log-empty">📭 Keine Nachrichten vorhanden.</div>';
+            return;
+        }
+        if(!resp.ok) throw new Error("GitHub Fehler: " + resp.status);
+
+        const files = await resp.json();
+        
+        // Filtern nach .json und sortieren (Neueste zuerst)
+        // Dateiname ist z.B. voice_170792345.json -> Sortierung nach Name funktioniert meist, 
+        // aber wir sortieren sicherheitshalber alphanumerisch rückwärts
+        const voiceFiles = files
+            .filter(f => f.name.endsWith('.json'))
+            .sort((a,b) => b.name.localeCompare(a.name)); // Neueste oben
+
+        countLabel.innerText = `(${voiceFiles.length})`;
+        list.innerHTML = "";
+
+        if(voiceFiles.length === 0) {
+            list.innerHTML = '<div class="log-empty">📭 Ordner ist leer.</div>';
+            return;
+        }
+
+        // 2. Dateien einzeln laden und anzeigen
+        // Wir laden erstmal nur die ersten 10, um API Limits zu schonen, falls es viele sind
+        const maxLoad = 10; 
+        
+        for (let i = 0; i < Math.min(voiceFiles.length, maxLoad); i++) {
+            await fetchAndRenderVoice(voiceFiles[i], header, list);
+        }
+        
+        if (voiceFiles.length > maxLoad) {
+            const moreBtn = document.createElement('div');
+            moreBtn.style.textAlign = "center";
+            moreBtn.innerHTML = `<button onclick="alert('Bitte ältere Nachrichten archivieren/löschen.')" style="background:none; border:none; color:var(--text-sub);">... ${voiceFiles.length - maxLoad} weitere ...</button>`;
+            list.appendChild(moreBtn);
+        }
+
+    } catch(e) {
+        console.error(e);
+        list.innerHTML = `<div class="log-empty">❌ Fehler: ${e.message}</div>`;
+    }
+}
+
+async function fetchAndRenderVoice(fileEntry, header, container) {
+    try {
+        // Dateiinhalt laden
+        const resp = await fetch(fileEntry.url, { headers: header }); // fileEntry.url ist die API URL
+        if(!resp.ok) return;
+        
+        const jsonFile = await resp.json();
+        
+        // Content Decodieren
+        const rawContent = jsonFile.content.replace(/\s/g, '');
+        const encryptedJson = JSON.parse(decodeURIComponent(escape(atob(rawContent))));
+        
+        // Entschlüsseln
+        // encryptedJson sieht so aus: { sender: "Oma", ts: 123, enc: "..." }
+        const decryptedStr = await decryptText(encryptedJson.enc, conf.p);
+        
+        if(!decryptedStr) {
+            renderErrorItem(container, "Passwort falsch", fileEntry.name);
+            return;
+        }
+
+        const payload = JSON.parse(decryptedStr);
+        // payload sieht so aus: { sender: "Oma", ts: 123, audio: "data:audio/webm;base64,..." }
+
+        // Render UI
+        const dateStr = new Date(payload.ts).toLocaleString();
+        
+        const div = document.createElement('div');
+        div.className = 'voice-card';
+        div.innerHTML = `
+            <div class="voice-meta">
+                <span>📅 ${dateStr}</span>
+                <button onclick="deleteVoiceFile('${fileEntry.sha}', '${fileEntry.path}')" style="background:rgba(255,59,48,0.1); color:var(--danger); border:none; border-radius:4px; padding:4px 8px; cursor:pointer;">🗑️ Löschen</button>
+            </div>
+            <audio controls src="${payload.audio}"></audio>
+        `;
+        container.appendChild(div);
+
+    } catch(e) {
+        console.error(e);
+        renderErrorItem(container, "Fehler beim Laden", fileEntry.name);
+    }
+}
+
+function renderErrorItem(container, msg, filename) {
+    const div = document.createElement('div');
+    div.className = 'voice-card';
+    div.style.borderLeftColor = 'var(--danger)';
+    div.innerHTML = `<div style="color:var(--danger)">⚠️ ${msg} (${filename})</div>`;
+    container.appendChild(div);
+}
+
+async function deleteVoiceFile(sha, path) {
+    if(!confirm("Diese Sprachnachricht wirklich löschen?")) return;
+    
+    try {
+        const url = `https://api.github.com/repos/${conf.gu}/${conf.gr}/contents/${path}`;
+        const resp = await fetch(url, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${conf.gt}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                message: "Delete voice msg",
+                sha: sha
+            })
+        });
+        
+        if(resp.ok) {
+            showToast("Gelöscht! 🗑️");
+            loadVoiceMessages(); // Refresh
+        } else {
+            alert("Löschen fehlgeschlagen.");
+        }
+    } catch(e) {
+        alert("Fehler: " + e);
     }
 }
     
