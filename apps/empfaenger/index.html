@@ -515,6 +515,49 @@
     @keyframes snowFall { 0% { transform: translateY(0) rotate(0deg); opacity: 1; } 100% { transform: translateY(3vh) rotate(180deg); opacity: 0; } }
     @keyframes fogMove { 0% { transform: translateX(-5px); } 100% { transform: translateX(5px); } }
     @keyframes lightning { 0%, 90%, 100% { opacity: 0; } 92%, 96% { opacity: 1; } }
+
+
+    /* === VOICE RECORDER UI === */
+    #voiceBtn {
+        background: #333; color: white; border: 2px solid #555;
+        border-radius: 50%; width: 50px; height: 50px; 
+        font-size: 2.5vh; cursor: pointer; display: flex; 
+        align-items: center; justify-content: center; margin-right: 15px;
+    }
+    #voiceBtn:active { transform: scale(0.95); background: #c0392b; }
+
+    #voiceModal {
+        display: none; position: fixed; top: 0; left: 0; 
+        width: 100%; height: 100%; background: rgba(0,0,0,0.95);
+        z-index: 2500; flex-direction: column; 
+        align-items: center; justify-content: center;
+    }
+    
+    .rec-status { font-size: 3vh; color: #ccc; margin-bottom: 20px; font-weight: bold; }
+    .rec-timer { font-size: 8vh; color: white; font-family: monospace; margin-bottom: 40px; }
+    
+    .rec-controls { display: flex; gap: 20px; }
+    
+    .btn-rec { 
+        width: 120px; height: 120px; border-radius: 50%; border: none;
+        font-size: 40px; font-weight: bold; color: white; cursor: pointer;
+        display: flex; align-items: center; justify-content: center;
+        box-shadow: 0 0 30px rgba(0,0,0,0.5); transition: all 0.2s;
+    }
+    .btn-start { background: #4cd137; }
+    .btn-stop { background: #e84118; animation: pulseRed 1.5s infinite; }
+    .btn-send { background: #00a8ff; width: auto; padding: 20px 40px; border-radius: 20px; font-size: 3vh; }
+    
+    .rec-close {
+        position: absolute; top: 20px; right: 20px; 
+        font-size: 4vh; color: #666; cursor: pointer; padding: 20px;
+    }
+
+    @keyframes pulseRed { 
+        0% { box-shadow: 0 0 0 0 rgba(232, 65, 24, 0.7); } 
+        70% { box-shadow: 0 0 0 20px rgba(232, 65, 24, 0); } 
+        100% { box-shadow: 0 0 0 0 rgba(232, 65, 24, 0); } 
+    }
     
 </style>
 </head>
@@ -573,6 +616,14 @@
         <button id="playBtn" onclick="toggleSlideshow()">
             <span id="playIcon">▶</span> <span style="margin-left:5px" id="playText">Abspielen</span>
         </button>
+
+              <!-- Mitte: Buttons (JETZT MIT VOICE) -->
+        <div style="display:flex; align-items:center;">
+            <button id="voiceBtn" onclick="openVoiceUI()">🎙️</button>
+            <button id="playBtn" onclick="toggleSlideshow()">
+                <span id="playIcon">▶</span> <span style="margin-left:5px" id="playText">Abspielen</span>
+            </button>
+        </div>
 
         <!-- Rechts: Datum -->
         <div class="meta-details">
@@ -670,6 +721,18 @@
     <div id="lightbox" onclick="closeLightbox()">
         <img id="lightboxImg" src="">
     </div> 
+
+    <!-- VOICE RECORDER MODAL -->
+    <div id="voiceModal">
+        <div class="rec-close" onclick="closeVoiceUI()">✖</div>
+        
+        <div id="recStatus" class="rec-status">Bereit zur Aufnahme</div>
+        <div id="recTimer" class="rec-timer">00:00</div>
+        
+        <div class="rec-controls" id="recBtns">
+            <!-- Wird per JS befüllt -->
+        </div>
+    </div>
 <script>
 // === 0. MAGIC LINK CHECK ===
   // === 0. MAGIC LINK CHECK (MIT ÜBERSCHREIB-SCHUTZ) ===
@@ -2085,6 +2148,159 @@ async function loadInternetContent() {
         // WICHTIG: Sortieren, damit die neuen Sachen auch wirklich oben sind
         messages.sort((a,b) => b.timestamp - a.timestamp);
     }
+}
+
+
+// === VOICE RECORDER LOGIC (ENCRYPTED) ===
+let mediaRecorder = null;
+let audioChunks = [];
+let recInterval = null;
+let recSeconds = 0;
+let recordedBlob = null;
+
+// 1. UI Öffnen
+function openVoiceUI() {
+    document.getElementById('voiceModal').style.flex = 'flex'; // Flex statt Block für Zentrierung
+    document.getElementById('voiceModal').style.display = 'flex';
+    resetRecUI();
+}
+
+function closeVoiceUI() {
+    if(mediaRecorder && mediaRecorder.state === "recording") stopRecording();
+    document.getElementById('voiceModal').style.display = 'none';
+}
+
+function resetRecUI() {
+    recSeconds = 0;
+    audioChunks = [];
+    recordedBlob = null;
+    document.getElementById('recTimer').innerText = "00:00";
+    document.getElementById('recStatus').innerText = "Bereit zur Aufnahme";
+    // Start Button zeigen
+    document.getElementById('recBtns').innerHTML = `
+        <button class="btn-rec btn-start" onclick="startRecording()">🎙️</button>
+    `;
+}
+
+// 2. Aufnahme Starten
+async function startRecording() {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream); // Standard Format (WebM)
+        
+        mediaRecorder.ondataavailable = event => {
+            audioChunks.push(event.data);
+        };
+
+        mediaRecorder.onstop = () => {
+            // Wenn Stop gedrückt wurde: Blob erstellen
+            recordedBlob = new Blob(audioChunks, { type: 'audio/webm' });
+            showSendUI();
+        };
+
+        mediaRecorder.start();
+        
+        // UI Update
+        document.getElementById('recStatus').innerText = "🔴 Aufnahme läuft...";
+        document.getElementById('recBtns').innerHTML = `
+            <button class="btn-rec btn-stop" onclick="stopRecording()">⬛</button>
+        `;
+        
+        // Timer starten
+        recInterval = setInterval(() => {
+            recSeconds++;
+            const s = recSeconds < 10 ? "0"+recSeconds : recSeconds;
+            document.getElementById('recTimer').innerText = "00:" + s;
+            if(recSeconds >= 60) stopRecording(); // Max 60 sek
+        }, 1000);
+
+    } catch(e) {
+        alert("Mikrofon Zugriff verweigert oder Fehler: " + e);
+        closeVoiceUI();
+    }
+}
+
+// 3. Aufnahme Stoppen
+function stopRecording() {
+    if(mediaRecorder && mediaRecorder.state !== "inactive") {
+        mediaRecorder.stop();
+        mediaRecorder.stream.getTracks().forEach(track => track.stop()); // Mic freigeben
+    }
+    clearInterval(recInterval);
+}
+
+// 4. Senden UI anzeigen
+function showSendUI() {
+    document.getElementById('recStatus').innerText = "Aufnahme fertig!";
+    document.getElementById('recBtns').innerHTML = `
+        <button class="btn-rec" style="background:#555; font-size:20px;" onclick="resetRecUI()">↺</button>
+        <button class="btn-rec btn-send" onclick="encryptAndUploadVoice()">Senden 🚀</button>
+    `;
+}
+
+// 5. Verschlüsseln & Hochladen
+async function encryptAndUploadVoice() {
+    if(!recordedBlob || !config.ghToken) return;
+    
+    document.getElementById('recStatus').innerText = "Verschlüssele & Sende...";
+    
+    // A. Blob zu Base64 konvertieren
+    const reader = new FileReader();
+    reader.readAsDataURL(recordedBlob); 
+    reader.onloadend = async function() {
+        const base64Audio = reader.result;
+        
+        // B. Payload bauen
+        const payload = {
+            sender: "Oma", // Fester Absender
+            ts: Date.now(),
+            audio: base64Audio
+        };
+        
+        // C. VERSCHLÜSSELN (Nutzt deine existierende encryptStr Funktion!)
+        const encryptedContent = await encryptStr(JSON.stringify(payload), config.pass);
+        
+        if(!encryptedContent) {
+            alert("Fehler bei Verschlüsselung!");
+            return;
+        }
+        
+        // D. Wrapper für Upload bauen (Ähnlich wie Messages)
+        const uploadObj = {
+            sender: "Oma",
+            ts: payload.ts,
+            enc: encryptedContent // Hier ist das verschlüsselte Audio drin
+        };
+        
+        // E. Hochladen zu GitHub (Neue Datei pro Nachricht)
+        const filename = `voice_inbox/voice_${payload.ts}.json`;
+        const url = `https://api.github.com/repos/${config.ghUser}/${config.ghRepo}/contents/${filename}`;
+        
+        const contentBase64 = btoa(unescape(encodeURIComponent(JSON.stringify(uploadObj, null, 2))));
+        
+        try {
+            const resp = await fetch(url, {
+                method: 'PUT',
+                headers: { 
+                    'Authorization': `Bearer ${config.ghToken}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    message: "New Voice from Oma",
+                    content: contentBase64
+                })
+            });
+            
+            if(resp.ok) {
+                document.getElementById('recStatus').innerText = "Gesendet! ✅";
+                setTimeout(closeVoiceUI, 2000);
+            } else {
+                alert("Upload Fehler: " + resp.status);
+            }
+        } catch(e) {
+            alert("Netzwerk Fehler: " + e);
+        }
+    };
 }
     
 </script>
