@@ -2590,7 +2590,7 @@ async function encryptAndUploadVoice() {
     }
     
     // FINALER GRÖSSEN-CHECK
-    if(recordedBlob.size > 1000000) { // 1MB Limit
+    if(recordedBlob.size > 6000000) { // 1MB Limit
         handleVoiceError("Zu lange gesprochen (Datei zu groß).");
         return;
     }
@@ -2615,7 +2615,7 @@ async function encryptAndUploadVoice() {
             if(!encryptedContent) throw new Error("Encryption Failed");
             
             // Check: Ist der verschlüsselte String zu lang für GitHub? (ca 1.3 fache Größe)
-            if(encryptedContent.length > 1400000) { // 1.4 Mio Zeichen Limit
+            if(encryptedContent.length > 8500000) { // 1.4 Mio Zeichen Limit
                  throw new Error("Datei nach Verschlüsselung zu groß.");
             }
 
@@ -2803,7 +2803,7 @@ async function loadVoiceInbox() {
             updateDisplay();
         }
 
-        // 4. NEUE LADEN
+      // 4. NEUE LADEN
         for (const file of files) {
             // Auch hier: Oma Dateien gar nicht erst laden
             if (file.name.startsWith("oma_voice_")) continue;
@@ -2816,8 +2816,27 @@ async function loadVoiceInbox() {
             
             if (fileResp.ok) {
                 const fileJson = await fileResp.json();
-                const rawContent = fileJson.content.replace(/\s/g, '');
-                const jsonString = decodeURIComponent(escape(atob(rawContent)));
+                
+                // === FIX START: Blob Fallback für Oma ===
+                let rawContent = fileJson.content;
+                if (!rawContent && fileJson.sha) {
+                    try {
+                        const blobUrl = `https://api.github.com/repos/${config.ghUser}/${config.ghRepo}/git/blobs/${fileJson.sha}`;
+                        const blobResp = await fetch(blobUrl, { 
+                             headers: { 'Authorization': `Bearer ${config.ghToken}`, 'Accept': 'application/vnd.github.v3+json' }
+                        });
+                        if (blobResp.ok) {
+                            const blobData = await blobResp.json();
+                            rawContent = blobData.content;
+                        }
+                    } catch(err) { console.log("Blob Load Error", err); }
+                }
+
+                if (!rawContent) continue; // Überspringen wenn wirklich leer
+                // === FIX ENDE ===
+
+                const cleanContent = rawContent.replace(/\s/g, '');
+                const jsonString = decodeURIComponent(escape(atob(cleanContent)));
                 
                 try {
                     const data = JSON.parse(jsonString);
@@ -2833,7 +2852,7 @@ async function loadVoiceInbox() {
                         enc: data.enc, 
                         img: null,
                         hidden: false
-                    }, true);
+                    }, true); // Silent Add
 
                     loadedVoiceFiles.add(file.name);
                 } catch(e) {}
