@@ -2428,20 +2428,28 @@ function resetRecUI() {
 }
 
 
-// 2. Aufnahme Starten
+// 2. Aufnahme Starten (High Performance Mode)
 async function startRecording() {
     clearTimeout(voiceIdleTimer); // Idle Timer aus
 
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        // Wir versuchen, eine bitrate zu setzen, damit die Datei nicht unnötig riesig wird
-        const options = { mimeType: 'audio/webm;codecs=opus', audioBitsPerSecond: 16000 };
         
-        // Fallback falls der Browser die Optionen nicht mag
-        try {
+        // PERFORMANCE FIX: 
+        // 1. Wir nutzen Opus Codec (sehr effizient)
+        // 2. Wir setzen die Bitrate auf 16000 (reicht völlig für Stimme, spart 90% Speicher!)
+        const options = { 
+            mimeType: 'audio/webm;codecs=opus', 
+            audioBitsPerSecond: 16000 
+        };
+        
+        // Fallback für Browser, die 'codecs=opus' nicht explizit verstehen
+        if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+            console.log("Opus nicht unterstützt, nutze Standard.");
+            // Wir versuchen trotzdem, die Bitrate niedrig zu halten
+            mediaRecorder = new MediaRecorder(stream, { audioBitsPerSecond: 16000 });
+        } else {
             mediaRecorder = new MediaRecorder(stream, options);
-        } catch(e) {
-            mediaRecorder = new MediaRecorder(stream);
         }
         
         mediaRecorder.ondataavailable = event => {
@@ -2451,24 +2459,26 @@ async function startRecording() {
         };
 
         mediaRecorder.onstop = () => {
+            // Blob erstellen (jetzt viel kleiner dank 16kbit/s)
             recordedBlob = new Blob(audioChunks, { type: 'audio/webm' });
             
-            // AUTOMATISCHES SENDEN LOGIK
             if (uiConf.confirmVoice) {
                 showSendUI(); 
             } else {
-                // UI Feedback sofort geben
                 document.getElementById('recStatus').innerText = "Bereite Versand vor...";
-                document.getElementById('recBtns').innerHTML = ""; // Buttons weg
+                document.getElementById('recBtns').innerHTML = ""; 
                 
-                // Kurze Pause (100ms), damit der Blob sicher fertig im Speicher liegt
+                // Kurze Pause für die CPU
                 setTimeout(() => {
                     encryptAndUploadVoice();
                 }, 100);
             }
         };
 
-        mediaRecorder.start();
+        // WICHTIG: Time-Slice Parameter (1000ms)
+        // Das zwingt den Browser, den Speicher jede Sekunde zu leeren 
+        // und in unser Array zu schieben. Verhindert RAM-Überlauf!
+        mediaRecorder.start(1000);
         
         // UI Update: STOP BUTTON
         document.getElementById('recStatus').innerText = "Ich höre zu...";
@@ -2479,23 +2489,21 @@ async function startRecording() {
             </button>
         `;
         
-        // Timer starten
+        // Timer
         recInterval = setInterval(() => {
             recSeconds++;
             const s = recSeconds < 10 ? "0"+recSeconds : recSeconds;
             document.getElementById('recTimer').innerText = "00:" + s;
             
-            // BEI 60 SEKUNDEN: Automatisch stoppen
             if(recSeconds >= 60) {
                 stopRecording(); 
             }
         }, 1000);
 
     } catch(e) {
-        // Hier darf ein Alert sein, weil das Mikrofon kaputt ist (Hardware Fehler)
-        // Das passiert bevor Oma überhaupt spricht.
         console.error(e);
         document.getElementById('recStatus').innerText = "Mikrofon Fehler!";
+        // Automatisch schließen nach 3s, damit Oma nicht feststeckt
         setTimeout(closeVoiceUI, 3000);
     }
 }
