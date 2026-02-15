@@ -1223,21 +1223,30 @@ async function processAndAdd(item, silent = false) {
 
     // === 2. HAUPTLOGIK ===
    
-    async function startApp() {
+  async function startApp() {
+        // 1. Erstmal die schnellen Sachen laden (Text & Bilder)
         await loadGitHubArchive();
         await loadInternetContent();
-        // === NEU: SOFORT NACH VOICE SUCHEN ===
-        await loadVoiceInbox(); 
 
+        // 2. SOFORT ANZEIGEN! (Damit "Lade Archiv..." verschwindet)
         currentIndex = 0;
         updateDisplay();
         
+        // 3. Jetzt Sprachnachrichten im HINTERGRUND laden (Kein await!)
+        console.log("Starte Hintergrund-Suche nach Sprache...");
+        // Wir hängen ein .then dran, um das Display zu aktualisieren, wenn alles da ist
+        loadVoiceInbox().then(() => {
+            console.log("Sprachnachrichten vollständig geladen.");
+            // Wenn wir auf der Startseite sind (Index 0), aktualisieren wir, 
+            // damit die neuen Sprachnachrichten sichtbar werden.
+            if(currentIndex === 0) updateDisplay();
+        });
+
+        // 4. Restliche Dienste starten
         connectNtfy();
-        startConnectionWatchdog(); // <--- DIESE ZEILE IST WICHTIG!
+        startConnectionWatchdog(); 
         startDailyReloadTask(); 
         fetchWeather();
-        
-        
     }
 
 async function loadGitHubArchive() {
