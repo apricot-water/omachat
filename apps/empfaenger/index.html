@@ -837,6 +837,11 @@
     <div style="font-size:10px; color:#666; text-align:right; margin-top:-5px;">(0 = Deaktiviert)</div> 
         <!-- ... vorheriger Code (Screensaver input) ... -->
 
+ <div class="setting-row" style="margin-top: 15px; border-top: 1px solid #444; padding-top: 10px;">
+        <label style="color: #ff4757;">🚫 Antworten-Button ausblenden?</label>
+        <input type="checkbox" id="checkHideReply" style="width:20px; height:20px;">
+    </div>
+        
         <!-- NEU: VOICE CONFIRM TOGGLE -->
     <div class="setting-row" style="margin-top: 10px; border-top: 1px dashed #444; padding-top: 10px;">
         <label>Vor Senden fragen? (Sprachnachricht)</label>
@@ -1582,6 +1587,9 @@ function goDark() {
         document.getElementById('inputLat').value = uiConf.lat || "52.52";
         document.getElementById('inputLon').value = uiConf.lon || "13.41";
 
+        //Den Oma Sprachnachrichten Button anzeigen/nicht anzeigen
+        document.getElementById('checkHideReply').checked = uiConf.hideReplyBtn || false;
+
         // Zoom & Screensaver Einstellungen laden
         document.getElementById('checkZoom').checked = uiConf.zoomActive;
         document.getElementById('numZoomTime').value = uiConf.zoomTime || 10;
@@ -1638,6 +1646,8 @@ function goDark() {
             const newMaxDays = parseInt(document.getElementById('numMaxDays').value) || 0;
             const daysChanged = (uiConf.maxDays !== newMaxDays); // Merken ob geändert
             uiConf.maxDays = newMaxDays;
+
+             uiConf.hideReplyBtn = document.getElementById('checkHideReply').checked;
             
        // NEU: Internet Checkbox auslesen
         const newShowInternet = document.getElementById('checkInternetContent').checked;
@@ -1648,6 +1658,8 @@ function goDark() {
         uiConf.showInternet = newShowInternet;
             
             localStorage.setItem('oma_ui_settings', JSON.stringify(uiConf));
+            
+            applyUi(uiConf.textSize, uiConf.imgSize);
 
              // Wetter sofort neu laden mit neuen Koordinaten
             fetchWeather(); 
@@ -1657,7 +1669,8 @@ function goDark() {
             if(saverVal) uiConf.screensaverMin = parseInt(saverVal.value) || 0;
 
             localStorage.setItem('oma_ui_settings', JSON.stringify(uiConf));
-            
+
+                    
             // Timer mit neuen Werten sofort anwenden
             resetIdleTimer();
 
@@ -1691,12 +1704,20 @@ function goDark() {
         }
     }
     
-    // 6. Werte anwenden (CSS)
+    // 6. Werte anwenden (CSS & Sichtbarkeit)
     function applyUi(textVal, imgVal) {
+        // Schrift & Bildgröße
         const txt = document.getElementById('messageText');
         const img = document.getElementById('messageImg');
         if(txt) txt.style.fontSize = textVal + "vh";
         if(img) img.style.maxHeight = imgVal + "vh";
+
+        // === NEU: ANTWORTEN BUTTON VERSTECKEN ===
+        const vBtn = document.getElementById('voiceBtn');
+        if (vBtn) {
+            // Wenn "hideReply" wahr ist -> ausblenden (none), sonst anzeigen (flex)
+            vBtn.style.display = uiConf.hideReplyBtn ? 'none' : 'flex';
+        }
     }
 
     // === NEU: LIGHTBOX FUNKTIONEN ===
