@@ -2612,16 +2612,16 @@ async function sendVoiceMessage() {
     };
 }
 
-// === LOG FUNKTION (Final & Sortiert nach echtem Datum) ===
+// === LOG FUNKTION (Final & Sortiert) ===
 async function loadLogData() {
-    console.log("Log-Funktion wird ausgeführt...");
+    console.log("Log-Funktion wird ausgeführt..."); // Prüfung für die Konsole
 
     const list = document.getElementById('logList');
     const status = document.getElementById('logStatus');
     
     // UI Feedback
     status.innerText = "Lade...";
-    list.innerHTML = '<div class="log-empty">⏳ Lade & entschlüssele Daten...</div>';
+    list.innerHTML = '<div class="log-empty">⏳ Lade Daten...</div>';
     
     if(!conf.gu || !conf.gr || !conf.gt) {
         list.innerHTML = '<div class="log-empty">❌ Config fehlt</div>';
@@ -2655,42 +2655,29 @@ async function loadLogData() {
         const cleanB64 = rawB64.replace(/\s/g, '');
         let logArray = JSON.parse(decodeURIComponent(escape(atob(cleanB64))));
         
-        // --- ÄNDERUNG START: Erst entschlüsseln, dann sortieren ---
-        let decryptedLogs = [];
+        // === SORTIERUNG (Sicherstellen, dass Zahlen verwendet werden) ===
+        logArray.sort((a, b) => {
+            const timeA = Number(a.timestamp) || 0;
+            const timeB = Number(b.timestamp) || 0;
+            return timeB - timeA; // Neueste zuerst
+        });
 
-        // 1. Alle Einträge durchgehen und entschlüsseln
+        // UI Aufbauen
+        list.innerHTML = "";
+        let count = 0;
+
+        // WICHTIG: "for...of" mit "await" garantiert die Reihenfolge!
+        // Nicht .forEach() benutzen!
         for(let item of logArray) {
             try {
                 const jsonStr = await decryptText(item.enc, conf.p);
                 if(jsonStr) {
                     const log = JSON.parse(jsonStr);
-                    // Wir speichern das entschlüsselte Objekt UND die originale Zeit
-                    decryptedLogs.push({
-                        data: log,
-                        serverTs: item.timestamp,
-                        // WICHTIG: Sortieren nach interner Zeit (log.ts), Fallback auf Serverzeit
-                        realTime: log.ts || item.timestamp 
-                    });
+                    renderLogItem(list, log, item.timestamp);
+                    count++;
                 }
-            } catch(e) { console.log("Fehler beim Entschlüsseln eines Logs", e); }
+            } catch(e) { }
         }
-
-        // 2. Jetzt die entschlüsselte Liste sortieren (Neueste zuerst)
-        decryptedLogs.sort((a, b) => {
-            const timeA = Number(a.realTime) || 0;
-            const timeB = Number(b.realTime) || 0;
-            return timeB - timeA; 
-        });
-
-        // 3. UI rendern
-        list.innerHTML = "";
-        let count = 0;
-
-        for(let item of decryptedLogs) {
-            renderLogItem(list, item.data, item.serverTs);
-            count++;
-        }
-        // --- ÄNDERUNG ENDE ---
 
         if(count === 0) list.innerHTML = '<div class="log-empty">📭 Keine lesbaren Logs.</div>';
         status.innerText = `Aktualisiert: ${new Date().toLocaleTimeString()}`;
