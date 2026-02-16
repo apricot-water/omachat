@@ -1440,7 +1440,6 @@ function switchTab(tab) {
         return outputArray;
     }
 
-    // === 6. LOG VIEW LOGIC ===
     async function loadLogData() {
         const list = document.getElementById('logList');
         const status = document.getElementById('logStatus');
@@ -1454,7 +1453,7 @@ function switchTab(tab) {
         }
 
         try {
-            // Wir laden logs.json
+            // 1. Datei laden
             const url = `https://api.github.com/repos/${conf.gu}/${conf.gr}/contents/logs.json?t=${Date.now()}`;
             const header = { 'Authorization': `Bearer ${conf.gt}`, 'Accept': 'application/vnd.github.v3+json' };
             
@@ -1467,7 +1466,7 @@ function switchTab(tab) {
             
             const fileData = await resp.json();
             
-            // Content Decode Logic (identisch zu messages)
+            // Content decodieren
             let rawB64 = fileData.content;
             if (!rawB64 && fileData.sha) {
                  const blobResp = await fetch(`https://api.github.com/repos/${conf.gu}/${conf.gr}/git/blobs/${fileData.sha}`, { headers: header });
@@ -1479,24 +1478,25 @@ function switchTab(tab) {
             if(!rawB64) throw new Error("Kein Inhalt");
             
             const cleanB64 = rawB64.replace(/\s/g, '');
-            const logArray = JSON.parse(decodeURIComponent(escape(atob(cleanB64))));
+            let logArray = JSON.parse(decodeURIComponent(escape(atob(cleanB64))));
             
-            // UI leeren und neu befüllen
+            // === DER FIX: HIER SORTIEREN WIR SOFORT ===
+            // Wir nutzen den äußeren timestamp aus deinem JSON Snippet
+            // b.timestamp - a.timestamp = Neueste zuerst (absteigend)
+            logArray.sort((a, b) => b.timestamp - a.timestamp);
+
+            // 2. UI leeren
             list.innerHTML = "";
             let count = 0;
 
-            // Neueste zuerst (Reverse Loop oder Sort)
-            logArray.sort((a,b) => b.timestamp - a.timestamp);
-
+            // 3. Jetzt die sortierte Liste abarbeiten
             for(let item of logArray) {
-                // Entschlüsseln
                 try {
                     const jsonStr = await decryptText(item.enc, conf.p);
-                    if(!jsonStr) continue; // Skip bei falschem Passwort
+                    if(!jsonStr) continue; 
                     
                     const log = JSON.parse(jsonStr);
-                    // log Format: { type: "read", ts: 12345, dev: "Oma", sender: "Max", snippet: "Hallo..." }
-                    
+                    // Wir übergeben item.timestamp, da der ja korrekt außen steht
                     renderLogItem(list, log, item.timestamp);
                     count++;
                 } catch(e) { console.warn("Log Decrypt Fail", e); }
@@ -1511,6 +1511,7 @@ function switchTab(tab) {
         }
     }
 
+        
     function renderLogItem(container, data, serverTs) {
         // Zeit formatieren
         const dateObj = new Date(data.ts * 1000);
