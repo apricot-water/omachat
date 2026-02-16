@@ -1440,10 +1440,14 @@ function switchTab(tab) {
         return outputArray;
     }
 
-    async function loadLogData() {
+
+async function loadLogData() {
+        console.log("Starte loadLogData (Sortierte Version)..."); // Test-Ausgabe in der Konsole
+
         const list = document.getElementById('logList');
         const status = document.getElementById('logStatus');
         
+        // 1. UI sofort leeren und Status setzen
         status.innerText = "Lade GitHub...";
         list.innerHTML = '<div class="log-empty">⏳ Lade Daten...</div>';
         
@@ -1453,11 +1457,13 @@ function switchTab(tab) {
         }
 
         try {
-            // 1. Datei laden
+            // 2. Daten frisch von GitHub holen (Cache-Busting mit timestamp)
             const url = `https://api.github.com/repos/${conf.gu}/${conf.gr}/contents/logs.json?t=${Date.now()}`;
             const header = { 'Authorization': `Bearer ${conf.gt}`, 'Accept': 'application/vnd.github.v3+json' };
             
             const resp = await fetch(url, { headers: header, cache: "no-store" });
+            
+            // Fall: Datei existiert noch nicht
             if(resp.status === 404) {
                 list.innerHTML = '<div class="log-empty">📭 Noch keine Logs vorhanden.</div>';
                 status.innerText = "Leer";
@@ -1466,9 +1472,10 @@ function switchTab(tab) {
             
             const fileData = await resp.json();
             
-            // Content decodieren
+            // 3. Inhalt dekodieren (Base64 -> JSON)
             let rawB64 = fileData.content;
             if (!rawB64 && fileData.sha) {
+                 // Fallback für große Dateien (>1MB)
                  const blobResp = await fetch(`https://api.github.com/repos/${conf.gu}/${conf.gr}/git/blobs/${fileData.sha}`, { headers: header });
                  if(blobResp.ok) {
                      const blobData = await blobResp.json();
@@ -1480,37 +1487,40 @@ function switchTab(tab) {
             const cleanB64 = rawB64.replace(/\s/g, '');
             let logArray = JSON.parse(decodeURIComponent(escape(atob(cleanB64))));
             
-            // === DER FIX: HIER SORTIEREN WIR SOFORT ===
-            // Wir nutzen den äußeren timestamp aus deinem JSON Snippet
-            // b.timestamp - a.timestamp = Neueste zuerst (absteigend)
-            logArray.sort((a, b) => b.timestamp - a.timestamp);
+            // 4. SORTIERUNG (Wichtigster Teil!)
+            // Wir sortieren das Array BEVOR wir irgendwas anzeigen.
+            // (b - a) sorgt dafür, dass die höchsten Zahlen (neueste Zeit) oben stehen.
+            // "|| 0" verhindert Fehler, falls mal ein Zeitstempel fehlt.
+            logArray.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
 
-            // 2. UI leeren
+            // 5. Liste leeren (wichtig, damit nichts doppelt kommt)
             list.innerHTML = "";
             let count = 0;
 
-            // 3. Jetzt die sortierte Liste abarbeiten
+            // 6. Nach und nach entschlüsseln und einfügen
+            // "for ... of" garantiert die Reihenfolge (anders als forEach!)
             for(let item of logArray) {
                 try {
                     const jsonStr = await decryptText(item.enc, conf.p);
-                    if(!jsonStr) continue; 
+                    if(!jsonStr) continue; // Überspringen bei falschem Passwort
                     
                     const log = JSON.parse(jsonStr);
-                    // Wir übergeben item.timestamp, da der ja korrekt außen steht
+                    
+                    // Element in die Liste rendern
                     renderLogItem(list, log, item.timestamp);
                     count++;
                 } catch(e) { console.warn("Log Decrypt Fail", e); }
             }
 
+            // Abschluss-Status
             if(count === 0) list.innerHTML = '<div class="log-empty">📭 Keine lesbaren Logs.</div>';
-            status.innerText = `Stand: ${new Date().toLocaleTimeString()}`;
+            status.innerText = `Aktualisiert: ${new Date().toLocaleTimeString()}`;
 
         } catch(e) {
             console.error(e);
             list.innerHTML = `<div class="log-empty">❌ Fehler: ${e.message}</div>`;
         }
     }
-
         
     function renderLogItem(container, data, serverTs) {
         // Zeit formatieren
