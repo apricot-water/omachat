@@ -2612,9 +2612,15 @@ async function sendVoiceMessage() {
     };
 }
 
-// === LOG FUNKTION (Final & Sortiert) ===
+// === LOG FUNKTION (Final & Stabilisiert) ===
+let isLogLoading = false; // Sperre gegen mehrfaches Klicken
+
 async function loadLogData() {
-    console.log("Log-Funktion wird ausgeführt..."); // Prüfung für die Konsole
+    // 1. Sperre prüfen: Wenn wir schon laden, abbrechen!
+    if (isLogLoading) return;
+    isLogLoading = true;
+
+    console.log("Log-Funktion gestartet..."); 
 
     const list = document.getElementById('logList');
     const status = document.getElementById('logStatus');
@@ -2625,6 +2631,7 @@ async function loadLogData() {
     
     if(!conf.gu || !conf.gr || !conf.gt) {
         list.innerHTML = '<div class="log-empty">❌ Config fehlt</div>';
+        isLogLoading = false;
         return;
     }
 
@@ -2636,13 +2643,13 @@ async function loadLogData() {
         if(resp.status === 404) {
             list.innerHTML = '<div class="log-empty">📭 Keine Logs.</div>';
             status.innerText = "Leer";
+            isLogLoading = false;
             return;
         }
         
         const fileData = await resp.json();
         let rawB64 = fileData.content;
         
-        // Fallback für große Dateien
         if (!rawB64 && fileData.sha) {
             const blobResp = await fetch(`https://api.github.com/repos/${conf.gu}/${conf.gr}/git/blobs/${fileData.sha}`, { headers: header });
             if(blobResp.ok) {
@@ -2655,39 +2662,50 @@ async function loadLogData() {
         const cleanB64 = rawB64.replace(/\s/g, '');
         let logArray = JSON.parse(decodeURIComponent(escape(atob(cleanB64))));
         
-        // === SORTIERUNG (Sicherstellen, dass Zahlen verwendet werden) ===
-        logArray.sort((a, b) => {
-            const timeA = Number(a.timestamp) || 0;
-            const timeB = Number(b.timestamp) || 0;
-            return timeB - timeA; // Neueste zuerst
-        });
+        // === ÄNDERUNG: Erst entschlüsseln, dann sortieren ===
+        // Wir sammeln erst alle lesbaren Logs in einem neuen Array
+        let decryptedLogs = [];
 
-        // UI Aufbauen
-        list.innerHTML = "";
-        let count = 0;
-
-        // WICHTIG: "for...of" mit "await" garantiert die Reihenfolge!
-        // Nicht .forEach() benutzen!
         for(let item of logArray) {
             try {
                 const jsonStr = await decryptText(item.enc, conf.p);
                 if(jsonStr) {
                     const log = JSON.parse(jsonStr);
-                    renderLogItem(list, log, item.timestamp);
-                    count++;
+                    // Wir merken uns das Objekt UND den echten Zeitstempel aus dem Inhalt (log.ts)
+                    decryptedLogs.push({
+                        data: log,
+                        sortTime: log.ts || 0 // Falls kein TS, dann 0
+                    });
                 }
             } catch(e) { }
         }
 
-        if(count === 0) list.innerHTML = '<div class="log-empty">📭 Keine lesbaren Logs.</div>';
+        // === SORTIERUNG (Jetzt garantiert richtig) ===
+        // Wir sortieren die fertigen Daten. b - a = Neueste zuerst.
+        decryptedLogs.sort((a, b) => b.sortTime - a.sortTime);
+
+        // === RENDERN ===
+        list.innerHTML = ""; // Liste sicher leeren
+        
+        if(decryptedLogs.length === 0) {
+            list.innerHTML = '<div class="log-empty">📭 Keine lesbaren Logs.</div>';
+        } else {
+            // Jetzt die sortierte Liste einfach ausgeben
+            for(let item of decryptedLogs) {
+                renderLogItem(list, item.data, item.sortTime);
+            }
+        }
+
         status.innerText = `Aktualisiert: ${new Date().toLocaleTimeString()}`;
 
     } catch(e) {
         console.error(e);
         list.innerHTML = `<div class="log-empty">❌ Fehler: ${e.message}</div>`;
+    } finally {
+        // Sperre wieder aufheben, egal ob Fehler oder Erfolg
+        isLogLoading = false;
     }
 }
-    
     // Tour initialisieren (ganz am Ende starten)
     tour.init();
     
