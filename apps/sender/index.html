@@ -1205,30 +1205,7 @@ function switchTab(tab) {
         updateViewerUI();
     }
 
-    // --- UI UPDATE & DELETE (Rest bleibt gleich) ---
-    async function deleteMessage(ts) {
-        if(!confirm("Löschen?")) return;
-        
-        // 1. GitHub Update (Hidden setzen)
-        try {
-            // ... (Hier dein bestehender GitHub Delete Code, den können wir so lassen)
-            // Kurzfassung: Nur den API Call machen
-            const url = `https://api.github.com/repos/${conf.gu}/${conf.gr}/contents/messages.json`;
-            // ... (der Code ist komplex, ich nehme an du hast ihn noch im Kopf/Zwischenablage
-            // oder willst ihn behalten? Falls er weg ist, sag bescheid)
-            
-            // Simpler Hack für jetzt, damit UI reagiert:
-            handleDelete(ts); 
-            
-            // Delete-Command an ntfy senden
-             await fetch(`https://ntfy.sh/${conf.t}`, { 
-                method: 'POST', 
-                body: JSON.stringify({ cmd: 'DELETE', ts: ts }) 
-            });
-
-        } catch(e) { alert("Delete Error (siehe Konsole)"); console.error(e); }
-    }
-
+   
     function updateViewerUI() {
         if(viewerMsgs.length === 0) {
             document.getElementById('viewerMeta').innerText = "Keine Nachrichten gefunden.";
@@ -1345,14 +1322,6 @@ function switchTab(tab) {
 
    
 
-    function viewerNext(dir) {
-        const next = viewerIdx + dir;
-        if(next >= 0 && next < viewerMsgs.length) {
-            viewerIdx = next;
-            updateViewerUI(); // FIX: Hier stand vorher updateViewer()
-        }
-    }
-
 
 // ==========================================
     // === PWA & PUSH NOTIFICATIONS (Zusatz) ===
@@ -1439,89 +1408,7 @@ function switchTab(tab) {
         }
         return outputArray;
     }
-
-
-async function loadLogData() {
-        console.log("Starte loadLogData (Sortierte Version)..."); // Test-Ausgabe in der Konsole
-
-        const list = document.getElementById('logList');
-        const status = document.getElementById('logStatus');
-        
-        // 1. UI sofort leeren und Status setzen
-        status.innerText = "Lade GitHub...";
-        list.innerHTML = '<div class="log-empty">⏳ Lade Daten...</div>';
-        
-        if(!conf.gu || !conf.gr || !conf.gt) {
-            list.innerHTML = '<div class="log-empty">❌ GitHub Config fehlt</div>';
-            return;
-        }
-
-        try {
-            // 2. Daten frisch von GitHub holen (Cache-Busting mit timestamp)
-            const url = `https://api.github.com/repos/${conf.gu}/${conf.gr}/contents/logs.json?t=${Date.now()}`;
-            const header = { 'Authorization': `Bearer ${conf.gt}`, 'Accept': 'application/vnd.github.v3+json' };
-            
-            const resp = await fetch(url, { headers: header, cache: "no-store" });
-            
-            // Fall: Datei existiert noch nicht
-            if(resp.status === 404) {
-                list.innerHTML = '<div class="log-empty">📭 Noch keine Logs vorhanden.</div>';
-                status.innerText = "Leer";
-                return;
-            }
-            
-            const fileData = await resp.json();
-            
-            // 3. Inhalt dekodieren (Base64 -> JSON)
-            let rawB64 = fileData.content;
-            if (!rawB64 && fileData.sha) {
-                 // Fallback für große Dateien (>1MB)
-                 const blobResp = await fetch(`https://api.github.com/repos/${conf.gu}/${conf.gr}/git/blobs/${fileData.sha}`, { headers: header });
-                 if(blobResp.ok) {
-                     const blobData = await blobResp.json();
-                     rawB64 = blobData.content;
-                 }
-            }
-            if(!rawB64) throw new Error("Kein Inhalt");
-            
-            const cleanB64 = rawB64.replace(/\s/g, '');
-            let logArray = JSON.parse(decodeURIComponent(escape(atob(cleanB64))));
-            
-            // 4. SORTIERUNG (Wichtigster Teil!)
-            // Wir sortieren das Array BEVOR wir irgendwas anzeigen.
-            // (b - a) sorgt dafür, dass die höchsten Zahlen (neueste Zeit) oben stehen.
-            // "|| 0" verhindert Fehler, falls mal ein Zeitstempel fehlt.
-            logArray.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-
-            // 5. Liste leeren (wichtig, damit nichts doppelt kommt)
-            list.innerHTML = "";
-            let count = 0;
-
-            // 6. Nach und nach entschlüsseln und einfügen
-            // "for ... of" garantiert die Reihenfolge (anders als forEach!)
-            for(let item of logArray) {
-                try {
-                    const jsonStr = await decryptText(item.enc, conf.p);
-                    if(!jsonStr) continue; // Überspringen bei falschem Passwort
-                    
-                    const log = JSON.parse(jsonStr);
-                    
-                    // Element in die Liste rendern
-                    renderLogItem(list, log, item.timestamp);
-                    count++;
-                } catch(e) { console.warn("Log Decrypt Fail", e); }
-            }
-
-            // Abschluss-Status
-            if(count === 0) list.innerHTML = '<div class="log-empty">📭 Keine lesbaren Logs.</div>';
-            status.innerText = `Aktualisiert: ${new Date().toLocaleTimeString()}`;
-
-        } catch(e) {
-            console.error(e);
-            list.innerHTML = `<div class="log-empty">❌ Fehler: ${e.message}</div>`;
-        }
-    }
-        
+    
     function renderLogItem(container, data, serverTs) {
         // Zeit formatieren
         const dateObj = new Date(data.ts * 1000);
@@ -2724,6 +2611,83 @@ async function sendVoiceMessage() {
         }
     };
 }
+
+// === LOG FUNKTION (Final & Sortiert) ===
+async function loadLogData() {
+    console.log("Log-Funktion wird ausgeführt..."); // Prüfung für die Konsole
+
+    const list = document.getElementById('logList');
+    const status = document.getElementById('logStatus');
+    
+    // UI Feedback
+    status.innerText = "Lade...";
+    list.innerHTML = '<div class="log-empty">⏳ Lade Daten...</div>';
+    
+    if(!conf.gu || !conf.gr || !conf.gt) {
+        list.innerHTML = '<div class="log-empty">❌ Config fehlt</div>';
+        return;
+    }
+
+    try {
+        const url = `https://api.github.com/repos/${conf.gu}/${conf.gr}/contents/logs.json?t=${Date.now()}`;
+        const header = { 'Authorization': `Bearer ${conf.gt}`, 'Accept': 'application/vnd.github.v3+json' };
+        
+        const resp = await fetch(url, { headers: header, cache: "no-store" });
+        if(resp.status === 404) {
+            list.innerHTML = '<div class="log-empty">📭 Keine Logs.</div>';
+            status.innerText = "Leer";
+            return;
+        }
+        
+        const fileData = await resp.json();
+        let rawB64 = fileData.content;
+        
+        // Fallback für große Dateien
+        if (!rawB64 && fileData.sha) {
+            const blobResp = await fetch(`https://api.github.com/repos/${conf.gu}/${conf.gr}/git/blobs/${fileData.sha}`, { headers: header });
+            if(blobResp.ok) {
+                const blobData = await blobResp.json();
+                rawB64 = blobData.content;
+            }
+        }
+        if(!rawB64) throw new Error("Kein Inhalt");
+        
+        const cleanB64 = rawB64.replace(/\s/g, '');
+        let logArray = JSON.parse(decodeURIComponent(escape(atob(cleanB64))));
+        
+        // === SORTIERUNG (Sicherstellen, dass Zahlen verwendet werden) ===
+        logArray.sort((a, b) => {
+            const timeA = Number(a.timestamp) || 0;
+            const timeB = Number(b.timestamp) || 0;
+            return timeB - timeA; // Neueste zuerst
+        });
+
+        // UI Aufbauen
+        list.innerHTML = "";
+        let count = 0;
+
+        // WICHTIG: "for...of" mit "await" garantiert die Reihenfolge!
+        // Nicht .forEach() benutzen!
+        for(let item of logArray) {
+            try {
+                const jsonStr = await decryptText(item.enc, conf.p);
+                if(jsonStr) {
+                    const log = JSON.parse(jsonStr);
+                    renderLogItem(list, log, item.timestamp);
+                    count++;
+                }
+            } catch(e) { }
+        }
+
+        if(count === 0) list.innerHTML = '<div class="log-empty">📭 Keine lesbaren Logs.</div>';
+        status.innerText = `Aktualisiert: ${new Date().toLocaleTimeString()}`;
+
+    } catch(e) {
+        console.error(e);
+        list.innerHTML = `<div class="log-empty">❌ Fehler: ${e.message}</div>`;
+    }
+}
+    
     // Tour initialisieren (ganz am Ende starten)
     tour.init();
     
