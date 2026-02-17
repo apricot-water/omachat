@@ -517,6 +517,19 @@
                 </div>
             </div>
 
+            <!-- START NEUER BLOCK: HISTORIE -->
+            <div style="background:var(--input-bg); padding:15px; border-radius:12px; margin-bottom:20px;">
+                <div class="label-small" style="margin-left:0;">📅 Historie begrenzen (Tage)</div>
+                <div style="display:flex; gap:10px; align-items:center; margin-top:5px;">
+                    <input type="number" id="cmdMaxDays" value="3" min="0" placeholder="Tage" style="background:var(--bg-card); width:80px; text-align:center;">
+                    <button class="btn-primary" onclick="sendCmd('MAXDAYS')" style="flex:1;">Setzen</button>
+                </div>
+                <div style="font-size:11px; color:var(--text-sub); margin-top:8px;">
+                    0 = Unbegrenzt (Alles zeigen).<br>Seite lädt nach Änderung neu.
+                </div>
+            </div>
+            <!-- ENDE NEUER BLOCK -->
+
 
 <div style="background:var(--input-bg); padding:15px; border-radius:12px; margin-bottom:20px;">
                 <div class="label-small" style="margin-left:0;">🌙 Nachtmodus (Zeitraum)</div>
@@ -1739,6 +1752,16 @@ function startScanner() {
             payload.cmd = "SET_FONTSIZE";
             payload.val = document.getElementById('cmdFontSize').value;
         }
+
+                    else if(type === 'MAXDAYS') {
+            const val = document.getElementById('cmdMaxDays').value;
+            // Prüfung: Muss eine Zahl sein und nicht negativ
+            if(val === '' || parseInt(val) < 0) return alert("Bitte eine gültige Zahl (>= 0) eingeben.");
+            
+            payload.cmd = "CONFIG_MAXDAYS";
+            payload.days = val;
+        }
+                        
         else if(type === 'NIGHT') {
             const sVal = document.getElementById('cmdNightStart').value; 
             const eVal = document.getElementById('cmdNightEnd').value;
