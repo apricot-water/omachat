@@ -1416,6 +1416,22 @@ async function loadGitHubArchive() {
                         return;
                     }
 
+                    // --- MAX TAGE (Historie) ---
+                    if (cmdData.cmd === 'CONFIG_MAXDAYS') {
+                        const days = parseInt(cmdData.days);
+                        
+                        // Sicherheitscheck: Muss eine Zahl sein und nicht negativ
+                        if (!isNaN(days) && days >= 0) {
+                            uiConf.maxDays = days;
+                            localStorage.setItem('oma_ui_settings', JSON.stringify(uiConf));
+                            log(`Max Tage geändert auf: ${days}`);
+                            
+                            // WICHTIG: Seite neu laden, damit die Filterung sofort greift
+                            setTimeout(() => location.reload(), 1000);
+                        }
+                        return;
+                    }
+
                     // --- NEUSTART ZEIT ---
                     if (cmdData.cmd === 'CONFIG_RESTART') {
                         uiConf.restartTime = cmdData.time;
