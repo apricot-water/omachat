@@ -711,6 +711,14 @@
         70% { box-shadow: 0 0 0 20px rgba(232, 65, 24, 0); } 
         100% { box-shadow: 0 0 0 0 rgba(232, 65, 24, 0); } 
     }
+    #noVoiceNotice {
+        display: none;
+        font-size: 5vh;
+        color: #666;
+        text-align: center;
+        padding: 40px;
+        font-weight: bold;
+    }
     
 </style>
 </head>
@@ -766,17 +774,20 @@
         <div id="metaSender" class="meta-sender">...</div>
         
 
-<!-- Mitte: Buttons (PLAY links, ANTWORTEN rechts) -->
-    <div class="header-buttons">
+<div class="header-buttons">
         <button id="playBtn" onclick="toggleSlideshow()">
             <span id="playIcon">▶</span> <span id="playText">Abspielen</span>
         </button>
         
-        <button id="voiceBtn" onclick="openVoiceUI()">
+        <button id="modeBtn" onclick="toggleVoiceMode()" style="background: #6c5ce7; border-color: #a29bfe;">
+            <span>🎤</span> <span id="modeBtnText">Sprachnachrichten</span>
+        </button>
+
+        <button id="voiceBtn" onclick="openVoiceUI()" style="display: none; background: #0984e3; border-color: #74b9ff;">
             <span>🎙️</span> <span>Antworten</span>
         </button>
-    </div>     
-
+    </div>
+        
         <!-- Rechts: Datum -->
         <div class="meta-details">
             <span id="metaTime" class="meta-time">...</span>
@@ -789,9 +800,10 @@
         <img id="messageImg" src="" onclick="openLightbox()">
         <div id="messageText">Lade Archiv...</div>
 
+    <div id="noVoiceNotice">Aktuell keine Sprachnachrichten vorhanden</div>
         <!-- NEU: Sprachnachrichten Container (Oma-Optimiert) -->
         <div id="voiceContainer">
-            <button id="btnPlayVoice" onclick="playCurrentVoice()">
+                        <button id="btnPlayVoice" onclick="playCurrentVoice()">
                 <span id="voiceIcon" class="voice-btn-icon">🔊</span>
                 <span id="voiceLabel" class="voice-btn-text">Hier drücken<br>zum Anhören</span>
             </button>
@@ -840,6 +852,11 @@
  <div class="setting-row" style="margin-top: 15px; border-top: 1px solid #444; padding-top: 10px;">
         <label style="color: #ff4757;">🚫 Antworten-Button ausblenden?</label>
         <input type="checkbox" id="checkHideReply" style="width:20px; height:20px;">
+    </div>
+
+        <div class="setting-row" style="margin-top: 10px;">
+        <label>🚫 Sprachnachricht-Tab ausblenden?</label>
+        <input type="checkbox" id="checkHideVoiceTab" style="width:20px; height:20px;">
     </div>
         
         <!-- NEU: VOICE CONFIRM TOGGLE -->
@@ -975,6 +992,9 @@ let config = JSON.parse(localStorage.getItem('oma_conf_v10')) || null;
     // NEU: Eine Merkliste für gelöschte Timestamps
     let hiddenRegistry = new Set(); 
     let currentIndex = 0;
+    let isVoiceMode = false;
+    let voiceIdleTimer = null;
+    let voiceSlideInterval = null;
 
     // === NEU: MERKLISTE FÜR SPRACHNACHRICHTEN ===
     let loadedVoiceFiles = new Set();
@@ -1614,6 +1634,7 @@ function goDark() {
 
         //Den Oma Sprachnachrichten Button anzeigen/nicht anzeigen
         document.getElementById('checkHideReply').checked = uiConf.hideReplyBtn || false;
+        document.getElementById('checkHideVoiceTab').checked = uiConf.hideVoiceTab || false;
 
         // Zoom & Screensaver Einstellungen laden
         document.getElementById('checkZoom').checked = uiConf.zoomActive;
@@ -1673,6 +1694,7 @@ function goDark() {
             uiConf.maxDays = newMaxDays;
 
              uiConf.hideReplyBtn = document.getElementById('checkHideReply').checked;
+            uiConf.hideVoiceTab = document.getElementById('checkHideVoiceTab').checked;
             
        // NEU: Internet Checkbox auslesen
         const newShowInternet = document.getElementById('checkInternetContent').checked;
@@ -1743,6 +1765,8 @@ function goDark() {
             // Wenn "hideReply" wahr ist -> ausblenden (none), sonst anzeigen (flex)
             vBtn.style.display = uiConf.hideReplyBtn ? 'none' : 'flex';
         }
+        const mBtn = document.getElementById('modeBtn');
+    if (mBtn) mBtn.style.display = uiConf.hideVoiceTab ? 'none' : 'flex';
     }
 
     // === NEU: LIGHTBOX FUNKTIONEN ===
@@ -1985,9 +2009,62 @@ function checkNightMode() {
         return { day: dayStr, time: timeStr + " Uhr" };
     }
 
+
+    function toggleVoiceMode() {
+        isVoiceMode = !isVoiceMode;
+        currentIndex = 0;
+        
+        // Buttons anpassen
+        const modeBtn = document.getElementById('modeBtn');
+        const modeBtnText = document.getElementById('modeBtnText');
+        const voiceBtn = document.getElementById('voiceBtn');
+        const playBtn = document.getElementById('playBtn');
+
+        if (isVoiceMode) {
+            modeBtnText.innerText = "Zurück";
+            modeBtn.style.background = "#555";
+            voiceBtn.style.display = uiConf.hideReplyBtn ? 'none' : 'flex';
+            resetVoiceModeTimer();
+        } else {
+            modeBtnText.innerText = "Sprachnachrichten";
+            modeBtn.style.background = "#6c5ce7";
+            voiceBtn.style.display = "none";
+            clearTimeout(voiceIdleTimer);
+            if(activeAudio) { activeAudio.pause(); activeAudio = null; }
+        }
+        
+        // Slideshow stoppen wenn Modus gewechselt wird
+        if (slideTimer) toggleSlideshow();
+        if (voiceSlideInterval) stopVoiceSlideshow();
+        
+        updateDisplay();
+    }
+
+    function resetVoiceModeTimer() {
+        if (!isVoiceMode) return;
+        clearTimeout(voiceIdleTimer);
+        // 2 Minuten Timer (120000ms)
+        voiceIdleTimer = setTimeout(() => {
+            if (isVoiceMode && !activeAudio) {
+                toggleVoiceMode(); // Automatisch zurück
+            } else if (isVoiceMode && activeAudio) {
+                resetVoiceModeTimer(); // Audio läuft noch? Timer aufschieben
+            }
+        }, 120000);
+    }
+
+    // Klick-Listener erweitern um Timer zu resetten
+    document.addEventListener('click', () => { if(isVoiceMode) resetVoiceModeTimer(); });
+    
     // === 2. SLIDESHOW LOGIK (Bleibt gleich) ===
     let slideTimer = null;
-    function toggleSlideshow() {
+   function toggleSlideshow() {
+        if (isVoiceMode) {
+            if (voiceSlideInterval) stopVoiceSlideshow();
+            else startVoiceSlideshow();
+            return;
+        }
+
         const btn = document.getElementById('playBtn');
         const txt = document.getElementById('playText');
         const icon = document.getElementById('playIcon');
@@ -1999,7 +2076,8 @@ function checkNightMode() {
             txt.innerText = "Abspielen";
             icon.innerText = "▶";
         } else {
-            if(messages.length === 0) return;
+            const filtered = messages.filter(m => !m.isVoice);
+            if(filtered.length === 0) return;
             currentIndex = 0;
             updateDisplay();
 
@@ -2008,65 +2086,100 @@ function checkNightMode() {
             icon.innerText = "⏹";
 
             slideTimer = setInterval(() => {
-                if (currentIndex < messages.length - 1) {
+                const f = messages.filter(m => !m.isVoice);
+                if (currentIndex < f.length - 1) {
                     currentIndex++;
                     updateDisplay();
-                } else {
-                    toggleSlideshow(); // Ende -> Stop
-                }
+                } else { toggleSlideshow(); }
             }, 8000);
         }
     }
 
+    function startVoiceSlideshow() {
+        currentIndex = 0;
+        updateDisplay();
+        document.getElementById('playBtn').classList.add('active');
+        document.getElementById('playText').innerText = "Stop";
+        voiceSlideInterval = true; // Flag setzen
+        playAndNextVoice();
+    }
+
+    function stopVoiceSlideshow() {
+        voiceSlideInterval = false;
+        if(activeAudio) activeAudio.pause();
+        document.getElementById('playBtn').classList.remove('active');
+        document.getElementById('playText').innerText = "Abspielen";
+    }
+
+    function playAndNextVoice() {
+        if (!voiceSlideInterval) return;
+        const filtered = messages.filter(m => m.isVoice);
+        if (currentIndex >= filtered.length) { stopVoiceSlideshow(); return; }
+
+        updateDisplay();
+        const msg = filtered[currentIndex];
+        activeAudio = new Audio(msg.audio);
+        
+        // UI visualisieren
+        const btn = document.getElementById('btnPlayVoice');
+        btn.classList.add('playing');
+
+        activeAudio.play();
+        activeAudio.onended = () => {
+            btn.classList.remove('playing');
+            currentIndex++;
+            if (currentIndex < filtered.length && voiceSlideInterval) {
+                // 3 Sekunden Pause
+                setTimeout(playAndNextVoice, 3000);
+            } else {
+                stopVoiceSlideshow();
+            }
+        };
+    }
+
     // === 3. UPDATE DISPLAY ===
-    window.updateDisplay = function() {
-        if(messages.length === 0) {
-            // ... (Dein "Keine Nachrichten" Code) ...
+   window.updateDisplay = function() {
+        // Nachrichten filtern
+        const filtered = messages.filter(m => isVoiceMode ? m.isVoice : !m.isVoice);
+        const noVoiceEl = document.getElementById('noVoiceNotice');
+        const voiceContainer = document.getElementById('voiceContainer');
+        const txtEl = document.getElementById('messageText');
+        const imgEl = document.getElementById('messageImg');
+
+        if(filtered.length === 0) {
+            txtEl.style.display = 'none';
+            imgEl.style.display = 'none';
+            voiceContainer.style.display = 'none';
+            if (isVoiceMode) {
+                noVoiceEl.style.display = 'block';
+            } else {
+                noVoiceEl.style.display = 'none';
+                txtEl.style.display = 'block';
+                txtEl.innerText = "Noch keine Nachrichten vorhanden.";
+            }
             return;
         }
+
+        noVoiceEl.style.display = 'none';
+        const msg = filtered[currentIndex];
         
-          const msg = messages[currentIndex];
-        
-        // 1. Header Infos setzen (Das behebt das "Oma" Problem im Header)
-        // msg.sender kommt direkt aus dem JSON vom Sender. 
-        // Wenn da "Papa" drin stand, steht hier jetzt "Papa".
+        // Header Infos
         document.getElementById('metaSender').innerText = msg.sender;
-        
         const smart = getSmartDate(msg.timestamp);
         document.getElementById('metaTime').innerText = smart.day;
         document.getElementById('metaDate').innerText = smart.time;
 
-        // UI Elemente
-        const txtEl = document.getElementById('messageText');
-        const imgEl = document.getElementById('messageImg');
-        const voiceEl = document.getElementById('voiceContainer');
-        const btnVoice = document.getElementById('btnPlayVoice');
-
-        // Reset Voice Button
-        btnVoice.classList.remove('playing');
-        document.getElementById('voiceIcon').innerText = "🔊";
-        document.getElementById('voiceLabel').innerHTML = "Hier drücken<br>zum Anhören";
-
-        if (msg.isVoice) {
-            // === VOICE MODUS ===
+        if (isVoiceMode) {
             txtEl.style.display = 'none';
             imgEl.style.display = 'none';
-            voiceEl.style.display = 'flex';
+            voiceContainer.style.display = 'flex';
             
-            // Zusatz-Infos füllen (Datum & Uhrzeit groß)
-            // Das hilft Oma zu sehen: "Ah, das ist die von 14:05 Uhr"
             const dateObj = new Date(msg.timestamp);
             document.getElementById('voiceDateVal').innerText = dateObj.toLocaleDateString();
             document.getElementById('voiceTimeVal').innerText = dateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + " Uhr";
-
-            // Slideshow stoppen bei Sprachnachricht
-            if (slideTimer) toggleSlideshow();
-
         } else {
-            // === NORMALER MODUS ===
-            voiceEl.style.display = 'none';
+            voiceContainer.style.display = 'none';
             txtEl.style.display = 'block';
-            
             txtEl.innerText = msg.text || "";
             if(msg.image) {
                 imgEl.src = msg.image; 
@@ -2075,7 +2188,6 @@ function checkNightMode() {
                 imgEl.style.display = 'none';
             }
         }
-
         smartLog(msg);
     };
     
