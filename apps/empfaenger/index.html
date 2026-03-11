@@ -996,6 +996,48 @@ let config = JSON.parse(localStorage.getItem('oma_conf_v10')) || null;
     let voiceIdleTimer = null;
     let voiceSlideInterval = null;
 
+     let uiConf = { 
+        textSize: 4, 
+        imgSize: 50, 
+        zoomActive: false, 
+        zoomTime: 10,
+        nightStart: "22:00", 
+        nightEnd: "08:00",
+        lat: "52.52", // Default Berlin
+        lon: "13.41",
+        screensaverMin: 20,
+        restartTime: "04:00", // NEU: Minuten bis dunkel (0=aus)
+        // NEU: Standardmäßig aus
+        maxDays: 0,
+        showInternet: false 
+    }; 
+    
+    let clickCnt = 0;
+    let clickTimer = null;
+    let lightboxTimer = null;
+    let screensaverTimer = null; // Timer Variable für Screensaver
+
+    // 1. Beim Start laden
+    (function initUi() {
+        try {
+            const saved = JSON.parse(localStorage.getItem('oma_ui_settings'));
+            if(saved) { uiConf = { ...uiConf, ...saved }; }
+        } catch(e){}
+        
+        applyUi(uiConf.textSize, uiConf.imgSize);
+        
+        // Nachtmodus Check starten (alle 10 Sekunden)
+        checkNightMode();
+        setInterval(checkNightMode, 10000); 
+
+        // Screensaver starten
+        resetIdleTimer();
+        
+        // Globaler Listener: Bei JEDEM Klick/Touch aufwachen & Timer resetten
+        document.addEventListener('click', resetIdleTimer);
+        document.addEventListener('touchstart', resetIdleTimer);
+    })();
+
     // === NEU: MERKLISTE FÜR SPRACHNACHRICHTEN ===
     let loadedVoiceFiles = new Set();
     
@@ -1142,17 +1184,7 @@ async function processAndAdd(item, silent = false) {
         } catch(e) { console.error(e); return null; }
     }
 
-    // Falls Config da ist -> Direkt start
-    if(config) {
-        document.getElementById('setupScreen').style.display = 'none';
-        startApp();
-    } else {
-        // Setup Formular Felder füllen falls vorhanden
-        if(config) {
-            document.getElementById('ghUser').value = config.ghUser || "";
-            document.getElementById('setupTopic').value = config.ntfyTopic || "";
-        }
-    }
+   
 
   // === LOGGING & COOLDOWN LOGIC ===
     
@@ -1517,47 +1549,7 @@ async function loadGitHubArchive() {
 // === UI TWEAKS LOGIC & LIGHTBOX ===
 
     // Standards erweitert: Screensaver (20 Min Standard)
-    let uiConf = { 
-        textSize: 4, 
-        imgSize: 50, 
-        zoomActive: false, 
-        zoomTime: 10,
-        nightStart: "22:00", 
-        nightEnd: "08:00",
-        lat: "52.52", // Default Berlin
-        lon: "13.41",
-        screensaverMin: 20,
-        restartTime: "04:00", // NEU: Minuten bis dunkel (0=aus)
-        // NEU: Standardmäßig aus
-        maxDays: 0,
-        showInternet: false 
-    }; 
-    
-    let clickCnt = 0;
-    let clickTimer = null;
-    let lightboxTimer = null;
-    let screensaverTimer = null; // Timer Variable für Screensaver
-
-    // 1. Beim Start laden
-    (function initUi() {
-        try {
-            const saved = JSON.parse(localStorage.getItem('oma_ui_settings'));
-            if(saved) { uiConf = { ...uiConf, ...saved }; }
-        } catch(e){}
-        
-        applyUi(uiConf.textSize, uiConf.imgSize);
-        
-        // Nachtmodus Check starten (alle 10 Sekunden)
-        checkNightMode();
-        setInterval(checkNightMode, 10000); 
-
-        // Screensaver starten
-        resetIdleTimer();
-        
-        // Globaler Listener: Bei JEDEM Klick/Touch aufwachen & Timer resetten
-        document.addEventListener('click', resetIdleTimer);
-        document.addEventListener('touchstart', resetIdleTimer);
-    })();
+   
 
     // Hilfsfunktion: Zeitstring "22:30" in Tagesminuten (1350) umwandeln
     function getMins(timeStr) {
@@ -3022,6 +3014,18 @@ async function loadVoiceInbox() {
         console.error("Voice Sync Fehler:", e);
     }
 }
+
+     // Falls Config da ist -> Direkt start
+    if(config) {
+        document.getElementById('setupScreen').style.display = 'none';
+        startApp();
+    } else {
+        // Setup Formular Felder füllen falls vorhanden
+        if(config) {
+            document.getElementById('ghUser').value = config.ghUser || "";
+            document.getElementById('setupTopic').value = config.ntfyTopic || "";
+        }
+    }
 </script>
 </body>
 </html>
